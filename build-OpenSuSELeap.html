@@ -1,0 +1,234 @@
+<html><head><title>
+SLES build
+</title></head><body>
+To build a SLES system from scratch...
+<p>
+Of course there are a lot of ways to do this, and there is a lot more
+reference material on the <a href=http://www.suse.com>SUSE web site</a>
+but there are a couple of methods listed on this page
+<hr>
+I use this when building a OpenSuSE 15 (Leap) on hardware to be a CAE compute system:
+<ol>
+  <li>Configure the drives behind the internal RAID controller, if needed:
+    <ul>
+      <li>Configure a pair of disks to be the root drive, RAID 1
+      <li>Configure the rest of the disks to be extra / scratch, usually RAID 10,
+       but can be RAID5 or RAID0 depending on how much scratch the system needs.
+    </ul>
+  <li>Run through the initial SLES installation:
+    <ul>
+      <li>Boot the system from the OpenSuSE 15 (Leap) DVD
+      <li>System boots to menu, select "Install", add no boot options.
+      <li>Agreed to license terms, skipped ISO check, selected new install.
+      <li>Network Settings
+        <ul>
+          <li>Overview
+            <ul>
+              <li>Select first network card and enter a static IP address and hostname.
+            </ul>
+          <li>Hostname/DNS
+            <ul>
+              <li>Hostname:  <b><i>whqlx99</i></b> &nbsp; &nbsp;
+	       Domain name:  <b>aam.net</b>
+              <li>DNS servers:  <b><i>10.0.128.33 &nbsp; 10.0.129.33</i></b>
+            </ul>
+          <li>Routing:
+            <ul>
+              <li>Default IPv4 gateway:  <b><i>10.0.130.1</i></b>
+              <li><b>Do NOT enable IP forwarding</b>
+            </ul>
+        </ul>
+      <li>Registration:  Skip it
+      <li>Add On Product:  None
+      <li>Role:  Default System (not KVM or Xen)
+      <li>Suggested Partitioning
+        <ul>
+          <li>Edit Proposal Settings
+            <ul>
+              <li><b>LVM-based Proposal</b>
+              <li>File System for Root Partition:  <b>Ext4</b>
+              <li>Propose Separate Home Partiton:  <b>No</b>
+              <li>Enlage Swap for Suspend:  <b>No</b>
+            </ul>
+          <li>Expert Partitioner
+            <ul>
+              <li>Delete all existing partitions
+              <li>Create Partitions and Volume Groups like this:
+                <table border=1>
+                  <tr><td>sda1<td> 196 MiB<td>	0x00 (EFI boot)	FAT<td>	/efi/boot <b> N/A for OpenSuSE 15
+                  <tr><td>sda2<td> 558 GiB<td>	0x8E (Linux LVM)<td>	vg00	with 64MB extents
+                  <tr><td>sdc1<td>1640 GiB<td>	0x8E (Linux LVM)<td>	vg01	with 64MB extents
+                </table>
+              <li>Create Logical Volumes like this
+                <table border=1>
+                  <tr><td>/dev/vg00/root<td align=right> 5 GiB<td>Ext4<td>/ <b> OpenSuSE 15
+                  <tr><td>/dev/vg00/tmp<td align=right>  4 GiB<td>Ext4<td>/tmp <b> OpenSuSE 15
+                  <tr><td>/dev/vg00/usr<td align=right> 10 GiB<td>Ext4<td>/usr
+                  <tr><td>/dev/vg00/var<td align=right> 20 GiB<td>Ext4<td>/var <b> OpenSuSE 15
+                  <tr><td>/dev/vg00/swap<td align=right>2 GiB<td>swap<td>swap <b> OpenSuSE 15
+                    <b>(Note that this is on vg01!) I did not follow the standard.  S.M.</b>
+                </table>
+              <li>Accept partition layout.
+            </ul>
+        </ul>
+      <li>Clock and Time Zone page:
+        <ul>
+          <li><b><i>USA / Eastern (New York)</i></b> &nbsp;
+           Hardware Clock Set To UTC:  <b>Yes</b>
+          <li>Use "Other Settings" to point NTP to <b>10.0.127.191</b>
+           then <b>Synchronize Now</b>
+        </ul>
+      <li>Local User page:
+        <ul>
+          <li>Add <b>Unix Group</b>, login <b>ug</b>, password <b><i>jkl789</i></b> (will change later)
+          <li>Use this password for system administrator:  <b>Yes</b>
+        </ul>
+      <li>Installation Settings page:
+        <ul>
+          <li>Software:	<b>Defaults except de-select AppArmor</b>
+           (will show SUSE 12 SP3, 2.8 GiB)
+          <li>Booting:	<b>Boot Loader Type: GRUB2 EFI</b> (no changes)
+          <li>Firewall and SSH:
+            <ul>
+              <li><b>Firewall will be disabled</b>	(changed from default)
+              <li><b>SSH service will be enabled</b>	(default)
+            </ul>
+          <li>Kdump: <b>keep default settings</b>	(no changes)
+          <li>Default system target:  <b>Text Mode</b>	(default is graphical)
+          <li>System:  <b>System and Hardware Settings</b> (no changes)
+        </ul>
+      <li>Click "Install" to tell it to proceed
+    </ul><p>
+  <li>Login as root (with SSH) and finish the basic system configuration:
+    <ul>
+      <li>Move /home and /opt to their own filesystems
+       (do this under a direct root login):<tt>
+       <br>lvcreate -L  50GB -n opt  vg00;
+       <br>lvcreate -L  10GB -n home vg00;
+       <br>lvcreate -L 128GB -n swap vg00;
+       <br>mkfs -t ext4 -m 1 /dev/vg00/opt;
+       <br>mkfs -t ext4 -m 1 /dev/vg00/home;
+       <br>cp -ip /etc/fstab /etc/fstab.orig;
+       <br>( echo "/dev/vg00/opt  /opt ext4 defaults  0 0";
+       <br> &nbsp; echo "/dev/vg00/home  /home ext4 defaults  0 0";
+       <br>) | sed 's/ /\t/g' >> /etc/fstab
+       <br>mv -i /opt  /opt.orig;    mkdir /opt;  mount /opt;
+       <br>mv -i /opt.orig/*  /opt;  rmdir /opt.orig;
+       <br>mv -i /home /home.orig;   mkdir /home; mount /home;
+       <br>mv -i /home.orig/* /home; rmdir /home.orig;</tt><p>
+
+      <li>Move swap back to vg00 (do this now so it ends at end of disk):<tt>
+       <br>mkswap /dev/vg00/swap;
+       <br>swapon /dev/vg00/swap;
+       <br>swapoff /dev/vg01/swap;
+       <br>lvremove -f /dev/vg01/swap;
+       <br>base=/boot/grub2/grub.cfg; orig=$base.orig;
+       <br>test -f $orig && orig=$base.pre-`date +%Y-%m-%d`;
+       <br>cp -ip $base $orig;
+       <br>cat $orig | sed s+/vg01/swap+/vg00/swap+ > $base;
+       <br>dracut --force</tt> &nbsp; # Rebuilds the ramdisk with correct swap
+        <p>
+      <li>Clean up a few other miscelaneous things:<tt>
+       <br>userdel ug; cd /home; rm -r ug;
+       <br>vi /etc/fstab</tt> &nbsp; # Change swap from vg01 to vg00, fix colums to be on tab stops
+    </ul>
+</ol>
+<pre>
+<hr>
+Additional packages required for Grafana with Influxdb database
+mckenns@aamlxgmd002:~> rpm -qa | grep -i influxdb
+influxdb-1.7.4-1.x86_64
+mckenns@aamlxgmd002:~> rpm -qi --requires influxdb-1.7.4-1.x86_64
+Name        : influxdb
+Version     : 1.7.4
+Release     : 1
+Architecture: x86_64
+Install Date: Thu 11 Apr 2019 10:36:18 AM EDT
+Group       : default
+Size        : 106989264
+License     : Proprietary
+Signature   : RSA/SHA256, Thu 14 Feb 2019 10:27:49 AM EST, Key ID 684a14cf2582e0c5
+Source RPM  : influxdb-1.7.4-1.src.rpm
+Build Date  : Wed 13 Feb 2019 07:18:48 PM EST
+Build Host  : 0d93bf279314
+Relocations : /
+Packager    : support@influxdb.com
+Vendor      : InfluxData
+URL         : https://influxdata.com
+Summary     : Distributed time-series database.
+Description :
+Distributed time-series database.
+Distribution: (none)
+/bin/sh
+/bin/sh
+/bin/sh
+coreutils
+rpmlib(CompressedFileNames) <= 3.0.4-1
+rpmlib(PayloadFilesHavePrefix) <= 4.0-1
+shadow-utils
+mckenns@aamlxgmd002:~> rpm -qi --requires grafana-5.4.2-1
+Name        : grafana
+Version     : 5.4.2
+Release     : 1
+Architecture: x86_64
+Install Date: Wed 27 Mar 2019 12:40:42 PM EDT
+Group       : default
+Size        : 158569521
+License     : "Apache 2.0"
+Signature   : RSA/SHA1, Thu 13 Dec 2018 08:01:39 AM EST, Key ID 8c8c34c524098cb6
+Source RPM  : grafana-5.4.2-1.src.rpm
+Build Date  : Thu 13 Dec 2018 08:00:08 AM EST
+Build Host  : aa4bac525151
+Relocations : /
+Packager    : contact@grafana.com
+Vendor      : Grafana
+URL         : https://grafana.com
+Summary     : Grafana
+Description :
+Grafana
+Distribution: (none)
+/sbin/service
+fontconfig
+freetype
+urw-fonts
+/bin/sh
+/bin/sh
+rpmlib(PayloadFilesHavePrefix) <= 4.0-1
+rpmlib(CompressedFileNames) <= 3.0.4-1
+
+</pre>
+
+<hr>
+I used this when building a SLES 11.3 system:
+<ol>
+  <li>Pick a system that you'd like this system to be similar to, and run
+   <br><tty>yast2 clone_system</tty>
+  <li>Copy <tty>/root/autoinst.xml</tty> to whqlx111 and put it in
+   <tty>/var/www/html/build/newbox.xml</tty>
+  <li>Edit the file according to the preferences for the new system.
+   You can take out most of the file, and YaST will use defaults for
+   any sections not included (such as drivers for hardware, etc.).
+   See <a href=https://www.suse.com/documentation/sles11/book_autoyast/data/profile_intro.html>AutoYaST documentation</a> for more info.
+  <li>Boot the new system from the SLES ISO
+   (i.e. SLES-12-SP1-DVD-x86_64-GM-DVD1.iso)
+  <li>In VMware, make sure that the ethernet adapter is <b>E1000</b>.
+   This can be changed to <b>VMXNET3</b> after VMware tools are installed
+   on the system.
+  <li>On the console, use the arrow keys to select "Installation"
+  <li>On the "Boot Options" line, enter these fields, all one one line,
+   using appropriate IP addresses as necessary:
+   <br>hostip=<i>10.0.XXX.YYY</i> netmask=255.255.255.0
+       gateway=<i>10.0.XXX.1</i>  usevnc=1
+       vncpassword=<i>8-or-more-characters</i>
+       autoyast=http://10.0.127.101/build/newbox.xml
+   <br>Alternatively replace 'vnc' with 'ssh' if you prefer the YaST2 text
+    interface
+  <li>Start the install
+  <li>When you get the message <b>Starting YaST2</b> on the console,
+   start a VNC client on your desktop/laptop and connect to the VNC server
+   running on the new system.  You will get the YaST2 GUI.
+  <li>Finish the installation configuration and start the installation
+  <li>When the installation is finished the system will reboot, so the
+   VNC connection will drop.
+</ol>
+</body></html>

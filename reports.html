@@ -1,0 +1,113 @@
+<html><head>
+<title>CAE Reports</title>
+</head><body>
+
+This page contains a list of reports run on CAE
+(Computer Aided Engineering) compute systems,
+primarily geared toward those run on Linux.
+<br>
+The purpose of this page is to give a general overview of how data is
+retreieved, where it is retrieved from, and where the output is written.
+To fully understand the process, the scripts [should] contain more detailed
+documentation in the comments.  If not, you can always read the code itself.
+<hr>
+<!--
+-->
+There is a script that runs as </b>kukretm</b> and collects CAD software
+license usage information.  Wayne is currently trying to get documentation
+on this process.
+<!-- INC0032455 may have more information on this, if I really need to scrounge
+ for it -->
+ <table border=1 style="width:65%">
+  <tr>
+    <th align="left" valign="top" width="20%">Scripts:
+    <th align="left">Purpose and description
+  <tr > 
+<p>
+
+<tr>
+
+<td>
+
+<b>CAE Capacity Usage report</b> 
+<td>
+CapacityUsageReport runs on whqlx40, punlx07, and fralx07 at 8am every morning<br>
+	
+	<a href="http://whqlx111/engr/CapacityUsageReport.html"> Link to some documentation on CapacityUsageReport</a>
+
+<tr>
+<td>
+<b>Job Logs</b>
+<br>
+<td>Each time a compute job is run (Abaqus, NX Nastran, STAR CCM, etc.),
+a log file is produced on the compute node in
+<b>/scratch/joblogs/<i>code</i>/<i>jobname</i>.log</b> where
+<i>code</i> is the name of the compute code, and <i>jobname</i> is the name of the job, as picked by the user (based on the input file name?).
+The log file contains the times that the job started and stoped.
+
+<p>
+<b>whqlx20</b>:/home/caxrpt/bin/<b>get-all-job-times</b> is a script
+which gathers statistics from these jobs.  It is intended to be
+run as the <b>caxrpt</b> user.
+This is what it does:
+<ol>
+  <li>Creates a script which will be used as a subroutine, of sorts.
+  <li>For each site (currently <b>WHQ</b> and <b>PBO</b>).
+    <ul>
+      <li>Start writing to data to <b><i>site</i>.jobs.txt</b>
+      <li>For each compute system at that site
+        <ul>
+          <li>Copy the subroutine over (caxrpt user has authorized_keys setup
+            to do so without a password prompt)
+          <li>Connect via SSH and run the subroutine, which...
+          <li>For <i>code</i> in <b>abaqus</b>, <b>nxnastran</b>,
+            <b>starccm+</b>
+            <ul>
+              <li>Look in every file named /scratch/joblogs/<i>code</i>/*.log
+               for a start time and a stop time (the strings that are searched
+               for and the time format are different for each code).
+              <li>Print a line that looks something like this (using tabs as
+               field separators):<br>
+               jobname.job &nbsp; code &nbsp; user &nbsp; run-host &nbsp;
+                start-time &nbsp; end-time
+            </ul>
+        </ul>
+      <li>The <b><i>site</i>.jobs.txt</b> file is now complete
+  </ul>
+
+<tr>
+<td>
+
+<b>6-hour jobs report</b>
+<br>
+<td>
+On <b>whqlx02</b> (LSF head node) <b>/usr/local/SAbin/lsf_queue_rpt.sh</b>
+runs every 6 hours.  It runs a <b>bjobs -u all</b>, and appends that to
+<b>/scratch/caehome/caehpc/6hrsreport/whqlx02_jobs6hrs.txt</b>,
+every line prefaced with the date/time that the "bjobs" command was run.
+In addition, a "bjobs -u all" is E-mailed to these E-mail addresses:
+  ravikumar.boragal@corp.aam.net, michael.carlo@corp.aam.net,
+  sandya.shankar@corp.aam.net, charlie.sweeny@corp.aam.net
+
+<hr>
+<tr>
+<td>
+<b> Info.sh? </b>
+<td>
+There is a script that runs as </b>kukretm</b> and collects CAD software
+license usage information.  Wayne is currently trying to get documentation
+on this process.
+
+
+</ul>
+
+<hr>
+</table>
+<br>
+<p>
+
+
+<font size=-1>This page was last updated 2020-01-09 by Stewart McKenna</font>
+</body>
+</html>
+

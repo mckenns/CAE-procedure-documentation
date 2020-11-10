@@ -1,0 +1,70 @@
+<html><head>
+<style>
+table,th,td {
+	border: 1px solid black;
+	border-collapse: collapse;
+	}
+th, td {
+	padding: 5px;
+	}
+th {
+	text-align: left;
+	
+	}
+</style>
+<title>File cleanups</title>
+</head><body>
+This page documents several automated file cleanups handled by the UNIX team.
+<p>
+This page was last updated 2016-11-07 by Wayne Brehob.
+This is horribly incomplete, but we had to start somewhere.
+<p>
+<table border=1 style="width:100%">
+  <tr>
+    <th align="left" valign="top">Host			<br>User	<br>App
+    <th align="left">Purpose and description of cleanup
+  <tr > 
+    <td align="left" valign="top"  >whqlx777	<br>root	<br>MAGMA
+	</td>
+	<td>
+        <ul>
+        <li >This was written to keep the /scratch filesystem clean, but without
+          users losing results from their MAGMA runs.<br>
+        <li>At 1:00 AM every Saturday, script <b>/usr/local/SAbin/magma-move</b>
+          runs, and moves files older than a certain age (age given on
+          command-line, currently 150 days) from
+          <b>/scratch/home/<i>user</i>/MAGMAprojects</b>
+          to <b>/home/<i>user</i>/MAGMAprojects</b> (which resides on
+          <b>whqnt777</b>).  An "ls -l" of all of the files moved is left in
+           <b>/usr/local/SAdata/magma-move/<i>YYYY-MM-DD</i>.log</b>
+          (organized by user).  In addition, a brief report of space in /scratch
+          before and after the cleanup is reported at the end of this file.
+        <li>No E-mail report is currently being sent.
+        <li>This was last implemented many years ago, and received
+          sigificant updates by Wayne Brehob in November, 2016.
+		
+        </ul>
+	  </td>
+  <tr>
+    <td align="left" valign="top" width="40%">whqlx02,whqlx03,whqlx04,whqlx08,whqlx21,whqlx32,whqlx33,whqlx35,punlx01,punlx02,punlx03	<br>root	<br>NASTRAN, ABAQUS, etc
+	</td>
+    <td>
+      <ul>
+        <li>This was written to keep the /scratch filesystem clean.
+        <li>At 12:30 AM every day, script
+	  <b>/usr/local/SAbin/cleanup_scratch.sh</b> gets a list of CAE users
+	  from <b>the group file /etc/group/cae_users</b> and looks in
+	  <b>/scratch/home/<i>login-name-of-cae-user</i></b> for files older
+	  than 3 days and removes them.
+        <li>A report is E-mailed to <b>Stewart.McKenna@aam.com</b> and 
+	  <b>SIO-CAE</b> which is expanded via /etc/postfix/virtual to include
+	  <b>ravikumar.boragal@corp.aam.net, michael.carlo@corp.aam.net,
+	  sandya.shankar@corp.aam.net, Ammar.Monssar@corp.aam.net</b>.
+        <li>This script received minor updates by Stewart McKenna
+	  in November, 2016.
+	  <li> <a href="https://whqlx111.aam.net/engr/procedures/HPCclean_scratch.shManualPage.html"> Link to man page</a>
+	  <li> <a href="https://whqlx111.aam.net/engr/procedures/HPC%20-%20clean_scratch.sh%20Manual%20Page.docx"> Link to Word document</a>
+      </ul>
+</table>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<html><head>
+<style>
+table,th,td {
+	border: 1px solid black;
+	border-collapse: collapse;
+	}
+th, td {
+	padding: 5px;
+	}
+th {
+	text-align: left;
+	
+	}
+</style>
+<title>File cleanups</title>
+</head><body>
+This page documents several automated file cleanups handled by the UNIX team.
+<p>
+This page was last updated 2019-12-18 by Stewart McKenna.
+<p>
+<table border=1 style="width:100%">
+  <tr>
+    <th align="left" valign="top">Host			<br>User	<br>App
+    <th align="left">Purpose and description of cleanup
+  <tr > 
+<!--<td align="left" valign="top"  >whqlx777	<br>root	<br>MAGMA
+	</td>
+	<td>
+        <ul>
+        <li >This was written to keep the /scratch filesystem clean, but without
+          users losing results from their MAGMA runs.<br>
+        <li>At 1:00 AM every Saturday, script <b>/usr/local/SAbin/magma-move</b>
+          runs, and moves files older than a certain age (age given on
+          command-line, currently 150 days) from
+          <b>/scratch/home/<i>user</i>/MAGMAprojects</b>
+          to <b>/home/<i>user</i>/MAGMAprojects</b> (which resides on
+          <b>whqnt777</b>).  An "ls -l" of all of the files moved is left in
+           <b>/usr/local/SAdata/magma-move/<i>YYYY-MM-DD</i>.log</b>
+          (organized by user).  In addition, a brief report of space in /scratch
+          before and after the cleanup is reported at the end of this file.
+        <li>No E-mail report is currently being sent.
+        <li>This was last implemented many years ago, and received
+          sigificant updates by Wayne Brehob in November, 2016.
+		
+        </ul>
+	  </td>
+-->
+<td align="left" valign="top"  >whqlx40	<br>root	<br>MAGMA Cleanup
+	</td>
+	<td>
+        <ul>
+        <li >MAGMA cleanup script <b>/usr/local/SAbin/cleanup_MAGMA_results</b><br>
+		<br>This was written to keep the MAGMA home filesystem clean by
+          removing users results files after a certain date from their MAGMA runs,<br>
+		  and reporting on large (>10Gb) files<br>
+		  <pre>
+		# ---------------------------------------------------------------------------- #
+		# This script cleans MAGMA results directories on AAM CAE MAGMA file server
+		# whqlx40:/caehome7 in this case	
+		# ---------------------------------------------------------------------------- #
+		# f_Warn_User: Create an email report for all files under a given user's       #
+		#              folder more than 10Gb in size.                                  #
+		#              (this is jist a copy of f_Clean_user at present)                #
+		# ---------------------------------------------------------------------------- #
+		# ---------------------------------------------------------------------------- #
+		# f_Clean_User: remove files under 'results' directory for given user that are #
+		# more than 45 or given days old.............................................. #
+		# ---------------------------------------------------------------------------- #
+		<!--
+		# Preview MAGMA purge report every Wednesday
+		# S.McKenna 07/10/2019
+		# Preview run
+		0 15 * * 3 root /usr/local/SAbin/cleanup_MAGMA_results -p -v -w -d -a boragar,mah,xuz > /var/tmp/magma_purge_preview.log 2>&1
+		# user 'dhengra' was added to magma team, but their home directory on whqlx40 is /caehome3, not /caehome7. S.McKenna 09/12/2019
+		# Run in preview only for a while, as they have not many projects
+		0 30 * * 3 root /usr/local/SAbin/cleanup_MAGMA_results -p -v -w -d -a boragar,dhengra,mckenns -m /caehome3 -u dhengra >> /var/tmp/magma_purge_preview.log 2>&1
+		# Purge run
+		#0 0 * * 5  root /usr/local/SAbin/cleanup_MAGMA_results -p -v -w -d -a boragar,mah,xuz
+		0 0 * * 5 root /usr/local/SAbin/cleanup_MAGMA_results -v -w -d -a boragar,mah,xuz > /var/tmp/magma_purge.log 2>&1
+		
+		# ----------------------------------------------------------------------------------------------------------- #
+		#Usage:  cleanup_MAGMA_results [-v] [-p] [-w] [-d] [-G] [-l days] [-L file] [-a addr] [-m starting directory ]
+		#        cleanup_MAGMA_results -h|-u
+		# ----------------------------------------------------------------------------------------------------------- #
+		#
+		#-v      verbose does nothing
+		#-p      preview mode does no cleaning up of files
+		#-w      Warning only, report on files >= 10Gb more than 45 days
+		#-d      Remove files under 'results' folder > '90' days or -l xxx days
+		#-l days Delete files in 'results' folder older than 90 days. Default is '90'
+		#-L file Log file.  Default is '/var/tmp/cleanup_MAGMA_results.2019-07-11.log'
+		#-G grp  Name of group to use.  Default is 'magma'
+		#-u usr  Name of user  to use.  Default is ''
+		#-m mgh  Name of MAGMA HOME to use.  Default is '/caehome7'
+		#-a addr Mail address to use.  Default is 'sio-cae@aam.com'
+		#-h      Give this usage statment
+-->
+
+		</pre>
+		
+        <li>At Midnight every Wednesday, script 
+          runs in preview mode to report on potential files >10Gb and 'results' files older than 45 days </li>
+		  <br>
+		<li>At Midnight Friday script runs in purge mode to remove results files older than a certain age (age given on
+          command-line, currently 45 days) from <b>/caehome7/<i>user</i>/MAGMAprojects</b>
+		  or <b>/caehome3/<i>user</i>/MAGMAprojects</b> </li>
+		 <br>
+          <li>A brief report before and after the cleanup is reported at the end of this file.</li>
+        <li>An E-mail report is currently being sent to each user and to the <b>SIO-CAE</b> distribution list.
+        
+        </ul>
+	  </td>
+  <tr>
+    <td align="left" valign="top" width="40%">whqlx111<br>root	<br>Capacity report on /scratch filesystems
+	on all compute nodes in each cluster (WHQ,PBO,EHQ)
+	</td>
+    <td>
+      <ul>
+        <li>This was written to report on the size of the /scratch filesystems on each
+		compute node on each LSF cluster.
+        <li>At 4:00 AM every day, script <b>/usr/local/SAbin/report_scratch_space.sh</b> gets a list of CAE compute nodes
+	        for each LSF cluster (WHQ, PBO, EHQ) and runs 'du -h /scratch' to get the size of the scratch filesystem.
+	  <br>
+        <li>A report called "HPC Consolidated Scratch capacity" is sent via email to sio-cae@aam.com.
+	    <li>This script created by Stewart McKenna August 2019</li>
+	  <!--<li> <a href="https://whqlx111.aam.net/engr/procedures/HPCclean_scratch.shManualPage.html"> Link to man page</a>
+	  <li> <a href="https://whqlx111.aam.net/engr/procedures/HPC%20-%20clean_scratch.sh%20Manual%20Page.docx"> Link to Word document</a>
+      -->
+	  </ul>
+
+  <tr>
+    <td align="left" valign="top" width="40%"><b>All compute nodes in WHQ,PBO,EHQ LSF clusters<br>root	<br>NASTRAN, ABAQUS, etc
+	</td>
+    <td>
+      <ul>
+        <li>This was written to keep the /scratch filesystem clean.
+        <li>At 12:30 AM every day, script
+	  <b>/usr/local/SAbin/cleanup_scratch</b> gets a list of CAE users
+	  from <b>the group file /etc/group/cae_users</b> and looks in
+	  <b>/scratch/home/<i>login-name-of-cae-user</i></b> for files older
+	  than 3 days and removes them.
+        <li>A report called "'hostname' scratch files cleaned up" for each compute node is E-mailed to sio-cae@aam.com </li>
+		<li>This script received Major re-write by Wayne Brehob on August 2017
+		<!--
+	  <li> <a href="https://whqlx111.aam.net/engr/procedures/HPCclean_scratch.shManualPage.html"> Link to man page</a>
+	  <li> <a href="https://whqlx111.aam.net/engr/procedures/HPC%20-%20clean_scratch.sh%20Manual%20Page.docx"> Link to Word document</a>
+	  -->
+      </ul>
+</table>
+</body>
+</html>

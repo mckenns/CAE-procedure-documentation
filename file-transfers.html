@@ -1,0 +1,173 @@
+<html><head>
+<title>File transfers</title>
+</head><body>
+This page documents several automated file transfers handled by the UNIX team.
+<p>
+This page was last updated 2016-09-26 by Wayne Brehob and is in a state of
+flux, because some of the transfers are still being documented, and will be
+changing soon.
+<p>
+<table border=1>
+  <tr>
+    <th>Name
+    <th>Description of transfer
+  <tr>
+    <td>Engineering file transfers
+    <td>
+      Engineers in Pune and AHQ, working with engineering teams in the
+      United States, may need to transfer large files between their location
+      and.  Transfers can take a long time, so it's inconvenient for the
+      engineers to run WinSCP or the like from their desktop, so another
+      method was devised:  Users place files in a particular folder
+      on the file server at their location, and these files get transferred
+      to WHQ the next time the file-transfer process runs.  To get files
+      from WHQ back to their site, they simply place them in a location at
+      WHQ and they will be sent to their site.  This describes the process
+      that transfers the files.
+
+    <ul>
+      <li>On <b>whqlx40</b>, at system boot, or on demand,
+       <b>/sbin/init.d/file-movers</b> starts an instance of
+       <b>/usr/local/SAbin/file-mover</b> for each line in the table below
+       (with command-line arguments to tell it which transfer it is handling).
+      <table border=1>
+
+        <tr><th>direc.			<th>site
+            <th>local			<th>local directory
+            <th>remote			<th>remote directory
+            <th>proto:port <th>module	<th>times (Eastern US)
+
+        <tr><td>to			<td>PUN 
+            <td>whqlx40			<td>/caehome/files2pune
+            <td>punlx07			<td>/caehome/files4pune
+            <td>rsync:873  <td>files4pun<td>checks every 15 minutes
+
+        <tr><td>from			<td>PUN 
+            <td>whqlx40			<td>/caehome/files4detroit
+            <td>punlx07			<td>/caehome/files4detroit
+            <td>rsync:873  <td>files4detroit<td>checks every 15 minutes
+
+        <tr><td>to			<td>EHQ 
+            <td>whqlx40			<td>/caehome/files4ehq
+            <td>fralx07			<td>/caehome/files4ehq
+            <td>rsync:873  <td>files4ehq<td>checks every 15 minutes
+
+        <tr><td>from			<td>EHQ 
+            <td>whqlx40			<td>/caehome/files-from-ehq
+            <td>fralx07			<td>/caehome/files4detroit
+            <td>rsync:873  <td>files4detroit<td>checks every 15 minutes
+
+        <tr><td>to			<td>AHQ 
+            <td>whqlx40			<td>/caehome/files4ahq
+            <td>ahqnt2			<td>H:\Engineering\caehome\files4ahq
+            <td>rsync:873  <td>files4ahq<td>checks every 15 minutes
+
+        <tr><td>from			<td>AHQ 
+            <td>whqlx40			<td>/caehome/files-from-ahq
+            <td>ahqnt2			<td>H:\Engineering\caehome\files4detroit
+            <td>rsync:873  <td>files4detroit<td>checks every 15 minutes
+
+      </table>
+      <li>
+       The transfers (above) are listed in <tt>/etc/sysconfig/file-movers</tt>
+      <li>
+       Each instance of
+       <b>/usr/local/SAbin/file-mover</b> runs <b>rsync</b> every 15 minutes,
+       or after the previous transfer is done, whichever is longer.
+      <li>The <b>rsync</b> transfers any files in the source directory
+       to the destination directory, and removes the files in the source
+       directory after they have successfully been transferred.
+      <li>Extended logging is written to files
+       <b>/usr/local/SAdata/file-mover/<i>remote-host-name.D.date</i>.log</b>
+       (<b><i>D</i></b> is direction of transfer, <b>s</b> for send, <b>r</b>
+       for receive).
+      <li>Every day at 4:10 AM <b>whqlx111</b> reads the extended log files
+       from the previous day and produces a short report listing the files
+       transferred, and the total number of MB transferred, in each direction.
+       These reports can be found <a href=/engr/transfer-logs/>here</a>.
+      <li>There is some extended documentation on the configuration of the
+       remote systems <b><a href=cwrsync.html>here</a></b>.
+      </ul>
+  <tr>
+    <td>PLM replication
+    <td>
+      Engineering teams in several offices work on product designs that include
+      many of the same files.  The files are managed by PLM (Product Lifecycle
+      Management) software running in WHQ.  It's not possible for the remote
+      offices to read these files at a reasonable speed over the WAN, so
+      the files are copied from the PLM server at at WHQ to a Windows server at
+      each remote site.  The folder on the remote Windows system is considered
+      read-only, so any changes made to the files there would be overwritten by
+      files from WHQ on the next synchronization.
+     <p>
+      More specifically, on <b>whqlx06</b> (the PLM server) in
+      <b>/plm_vaults</b> are 4 additional directories:  
+      <b>plm_cat4 plm_cat5 plm_nx plm_ptc</b>.  These are copied to
+      folders with the same names on destination Windows systems (listed below)
+      running <b>cwRsyncServer</b> (rsync server based on CygWin).
+      A full 'rsync' is run once a day, then for all other cycles that day,
+      only files whose timestamps have been updated are given to 'rsync'
+      to compare and likely send.
+      The full 'rsync' is run at a different time for each site
+      in an attempt to run when neither sending nor receiving system is busy.
+      <table border=1>
+        <tr>
+          <th>Location			<th>host & drive
+          <th>Windows share		<th>full sync.<br>time (EST)
+        <tr>
+          <td>Asia Headquarters		<td>ahqnt2  P:\plm_vaults
+          <td>\\ahqnt2\plm_vaults	<td align=right>Mon. & Thu. 17:00
+        <tr>
+          <td>Pune, India		<td>punlx07:/plm_vaults
+          <td>\\punlx07\PLM_Vaults	<td align=right>Mon. & Thu. 18:00
+        <tr>
+          <td>Trollhatten, Sweden	<td>trolx07:/plm_vaults
+          <td>\\trolx07\plm_vaults	<td align=right>Mon. & Thu. 20:00
+        <tr>
+          <td>Frankfurt, Germany	<td>fralx07:/plm_vaults
+          <td>\\fralx07\plm_vaults	<td align=right>Tue. & Fri. &nbsp; 0:00
+      </table>
+      The synchronization for each site is handled by script
+      <b>/usr/local/SAbin/plm-replicate</b>, running as user <b>plmrep</b>.
+     <br>On system boot, script <b>/etc/init.d/plmrep</b> starts an instance of
+      <b>plm-replicate</b> for each destination system.  Each of these runs
+      until killed, continually checing for changes and running 'rsync'.
+      Further documentation for this script is in comments in the script.
+      Each script writes to a log file:
+       <b>/usr/local/SAdata/replication_logs/plm_rsync_<i>remote-host</i>P_<i>YYYYMMDD</i>.log</b> (a new file is created every day).
+      <br><b>/usr/local/SAdata/replication_logs</b> is exported and the log
+       files are used to produce Excel reports (with graphs) on bytes
+       transferred and 'rsync' cycle time.
+     <p>
+      Other misc. details:<ul>
+        <li>A cron job  in plmrep's crontab runs every 2 hours to make
+         sure all replication jobs are running and making progress.  If the
+	 jobs are not making progress or are getting errors when trying to
+	 connect to the Windows systems, an E-mail message is sent to the
+	 UNIX team with instructions on what needs to be done to fix it.
+         This script is: <b>/usr/local/SAbin/check-plmrep</b>
+        <li>The destination filesystems are all 1.5 TB, so if the synchronized
+         data ever exceeds that, all destination filelsystems must be expanded.
+        <li>Because the TCP connection established by 'rsync' may go idle
+         for extended periods of time while file checksums are computed,
+         the firewalls between WHQ and each site have a special rule that
+         extends the TCP timeout for 'rsync' traffic:
+         <br>set timeout 7200
+         <br>set start port 873
+         <br>set stop port 873
+        <li>There is some extended documentation on the configuration of the
+          remote systems <b><a href=cwrsync.html>here</a></b>.
+      </ul>
+     <p>
+  <tr>
+    <td>Repliweb
+    <td>
+      In RHTC, test cell computers have large files containing test data.
+      These files are moved to <b>ROCNT250</b> by <b>Repliweb</b> software
+      running on <b>ROCNT44DEV</b> (soon <b>ROCNT45</b>).  Contact the CAE
+      support team if you want technical details on the process.
+</table>
+<hr>
+<font size=-1>This page was last updated 2020-02-10 by Wayne Brehob</font>
+</body>
+</html>

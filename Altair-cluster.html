@@ -1,0 +1,149 @@
+<html><head>
+<title>OptiStruct</title>
+</head><body>
+<font size="+2"><b>How to give a CAE (Computer Aided Engineering) user ability
+to run jobs on 'hwul2'</b></font> (the Altair HyperWorks UnLimited cluster,
+2nd iteration):<p>
+These instructions include the steps require to fully create the account on the
+Altair cluster, which was approved by Dale Dunlap of Altair, 2018-11-09.
+<!--<br><font color=red>Well, they do not actually include them all yet, since this
+ procedure is still under construction, but the in <b>intent</b> is that this
+ procedure will include all the steps when it is finished</font>
+-->
+<p><i>Note:</i> All references to <b>whqcax</b> in the procedure below may be
+ replaced by the name of the server on which the 'hpcq' script is run,<br>
+ from. e.g. <b>fralx07</b> or punlx07</b>, for cases in which Engineers from
+ different sites wish to utilize the WHQ Altair cluster.<p>
+<ol>
+  <li>Ensure that the user has an account on <b>whqcax</b>, add them
+   to the <b>optistruct</b> group, and grab their SSH key.<tt>
+    <br>user=<i>username-getting-OptiStruct-access</i>
+    <br>usermod -G -a optistruct $user
+    <br>cat ~$user/.ssh/id_rsa.pub
+    </tt><p>
+	<b> N.B.: perform an nslookup of whqlx36.aam.net to get the correct IP address </b><br>
+	
+  <li><p> For an existing user who can submit ABAQUS jobs from whqlx36, this key will already be listed in whqlx02:/home/$user/.ssh/authorized_keys.<br>
+    <p>It should look something like this.<br>
+   
+   from="172.30.60.57" ssh-rsa ...long encrypted string... wwwrun@whqlx36
+) <br>
+   copy this for adding to the user's <b> hwul2 </b> ssh authorized_keys below.
+<p>
+   <li> If this is a new user who had no previous whqlx36 web page access, <br>
+   on <b>whqlx36</b> as 'root' or 'wwwrun', link 'wwwrun's SSH key file
+   for the user and <br> 
+   print the text that will be added to the user's authorized_keys file on whqlx40 <p>(This gives the user access to use the
+   <a href="http://whqlx36/">whqlx36 web interface</a>):<tt> <br>
+   
+    <br>user=<i>same_as_AD_but_lowercase</i>
+    <br>if [ -n "$user" ]; then
+    <br>&nbsp; cd ~wwwrun/.ssh
+    <br>&nbsp; ln id_rsa $user
+    <br>&nbsp; ln id_rsa.pub $user.pub
+    <br>&nbsp; ip=$(grep $(hostname) /etc/hosts | awk '/^#/ {next};{print $1; exit}')
+    <br>fi
+    <br># Copy the text that this prints for the next step.
+    <br>cat $user.pub | awk -v ip="$ip" '{
+    <br>&nbsp;  printf("#\n# This key is for web-based job submission\n#\n")
+    <br>&nbsp;  printf("from=\042%s\042 %s\n", ip, $0)
+    <br>&nbsp;  printf("#\n# This key is for all WHQ CAE compute nodes\n#\n") }'
+     </tt></li>
+ <!--
+  </p></li><li>Ask the CAE support team to contact Altair (usually
+   <a href="mailto:dale.dunlap@altair.com">Dale Dunlap</a>) to
+   request an account on the optistruct head node.  Send the user's
+   SSH key (obtained in previous step).<p>
+-->
+	<li> Create the user on <b>hwul2</b>, using the same uid, gid, name and account as on whqlx40
+	<br>To create a new user:
+	<ol>
+	<li>- look for their uid/gid on whqlx20
+	<li>- run useradd with uid/gid found above<br>
+		<br>useradd -u $uid -g $gid -c "$f $l, $s" $user
+	
+		<br>
+		<br><b>Example:</b> useradd -u 4076 -g 2500 -c "Jerry Chung,RHTC,248-299-6426," chungj<br>
+	<br><li>- set password for userid to useridHWUL<br>
+	<br><li>- cd /var/yp; make<br>
+<!--
+	<li>- service rpcidmapd restart -->
+
+	<br><li>- su - to userid<br>
+	(This will create their ssh keys (private key id_dsa and public key id_dsa.pub) )<br>
+	<br><li> Add the public ssh keys for whqlx40 and whqlx36 and/or whqlx36dev to the user's 'authorized_keys' file <br>
+	<br><li>- set up email forwarding:  edit .forward, add:<br>
+		first.last@aam.com <br>
+		<b>Example:</b>Stewart.McKenna@aam.com<br>
+   <br><li>- run pas-passwd<br>
+   <br><li>- run "pdsh -w r01n07 uptime"  <br>
+		<br>(The compute nodes are r01n01-r01n08)<br>
+ <!--
+   <li>- ssh to a compute node, then ssh to admin
+-->
+	<br><li>- login to CM as user <br>
+	(This will create the /stage/userid folder that is needed to run jobs on the cluster)
+</ol>
+ <!--	
+   <li></p><p> The following directory on <b> hwul2 </b> can be used to move/copy keys
+	<b>hwul2:/stage/new_users</b>
+</p>
+<ol>
+	<li>	You put <b>both the public key</b> for the new user from whqlx40, <b>and</b>the public key from whqlx36 above in:<br>
+	hwul2:/stage/new_users/&lt;"username"&gt;.id_rsa.pub
+	<li>	Create the user on hwul2, and put the public key into their ~/.ssh/authorized_keys
+	<li>	When done delete the key from /stage/new_users
+<br>
+	<br>
+</li></ol>
+<!--
+  </li><li>Altair will create new account on the cluster, and add the user's SSH
+   key you sent to the user's authorized_keys file on <b>hwul2</b>.<p>
+  <li> Altair creates the hwul2 users key and puts it in <b>/stage/new_users</b>.
+  <br>
+  <ol> 
+  <li> This will be hwul2:/stage/new_users/&lt;"username"&gt;.id_dsa.pub
+  <li> Put this key into their ~/.ssh/known_hosts on whqlx40
+  <li> When done, delete the key from /stage/new_users
+  <li> Append it to the user's authorized_keys file on whqlx40. 
+  </ol>
+  <br>
+
+</b>
+-->
+  
+  </li><li>On <b>whqlx40 as the user</b>, check the user's acces to <b>hwul2</b>,
+  copy the id_dsa.pub key from their account on <b>hwul2</b> and append it to their
+  <b>authorized_keys</b> file on whqlx40.
+<!--
+   generate an SSH key there, and add it to their authorized_keys file
+-->
+   so that results can be copied back.
+<!--
+   <br>Do these steps one at a time to ensure that each is successful before
+   proceeding to the next.<tt>
+    <br>user=<i>username-getting-OptiStruct-access</i>
+    <br>sudo -u $user
+    <br>ssh hwul2 whoami
+    <br>ip=`/usr/bin/host hwul | awk '{ print $NF }'`
+    <br>ssh hwul2 test -f .ssh/id_rsa.pub ||
+        ssh hwul2 ssh-keygen -t rsa -N "''" -f .ssh/id_rsa
+    <br>( printf "#\n# This key allows hwul to copy OptiStruct results back to
+     this system\n#\nfrom=\042%s\042 " $ip
+    <br>&nbsp; ssh hwul2 cat .ssh/id_rsa.pub | 's/@.*$/@hwul2/'
+     ) &gt;&gt; ~/.ssh/authorized_keys
+    <br>cat ~/.ssh/authorized_keys</tt>
+    <br>&nbsp; # Confirm that the file looks correct.<p>
+-->
+
+  </p></li><li>Ask the user to test a job.<p>
+
+
+<a href=https://hwul2.aam.net:8444/pbsworks/ui/framework/login/login.html>Link to Altair Appliance (hwul2)</a> 
+
+</p></li></ol>
+<hr>
+<font size="-1">This page was last updated 2019-12-09 by Stewart McKenna</font>
+
+
+</body></html>

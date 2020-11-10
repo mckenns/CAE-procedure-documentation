@@ -1,0 +1,246 @@
+<html><head>
+<style>
+table,th,td {
+	border: 1px solid black;
+	border-collapse: collapse;
+	}
+th, td {
+	padding: 5px;
+	}
+th {
+	text-align: left;
+	
+	}
+</style>
+<title>LSF at AAM</title>
+</head><body>
+<p>
+This document is intended to be a synopsis of various ways that compute jobs
+are run at AAM<br>and anciliary scripts that support the process<br>
+<p>
+<font size=-1>This page was last updated 2020-08-26 by Stewart McKenna</font>
+<-- This page was last updated 2020-01-03 by Stewart McKenna.
+<p>
+<table border=1 style="width:65%">
+  <tr>
+    <th align="left" valign="top" width="20%">Item:
+    <th align="left">Purpose and description
+  <tr > 
+<p>
+<tr>
+<td><b>LSF clusters:</b>
+<ul>
+<td>
+<b>Head nodes</b>
+  <li>WHQ:  whqlsf (whqlx02)
+  
+  <li>PBO:  punlsf (punlx01)
+  
+  <li>EHQ:  fralsf (fralx03)
+<br>
+<b>File servers</b>
+  <li>WHQ:  whqcax (whqlx40)
+  
+  <li>PBO:  puncax (punlx07) 
+  
+  <li>EHQ:  fracax (fralx07) 
+<br>
+
+
+<b>Web page job submission nodes</b>
+  <li>WHQ:  whqlx36
+  
+  <li>PBO:  punlx36
+  
+  <li>EHQ:  fralx36
+<br>
+<tr>
+<td>
+<b>Web page submission.</b>
+(whqlx36, punlx36, fralx36)
+<td>
+	web page connects to whqlx02<br>
+	web page documentation
+		<a href="http://whqlx36dev/HPC_JobManagement_UserGuide.pdf"> Link to web page documentation for whqlx36</a><br>
+<tr>
+<td>
+<b>WHQ Altair cluster</b> (head node hwul2)
+<td>
+	Optistruct and StarCCM+ jobs<br>
+	
+	<a href="http://whqlx111/engr/procedures/Altair-HyperWorks.html"> Link to some documentation on Altair Hyperworks</a>
+
+
+</ul>
+</td>
+<table border=1 style="width:65%">
+  <tr>
+    <th align="left" valign="top" width="20%">Scripts:
+    <th align="left">Purpose and description
+  <tr > 
+<p>
+
+<tr>
+<td>
+<b>hpcq<br>
+</td>
+<td>
+	Batch job submission script. <br>
+	Runs on LSF cluster file servers, WHQ (whqlx40/whqcax), PBO (punlx07), EHQ (fralx07)<br>
+	This is a backup to the Web page job submission, but is also use by MAGMA users, and Unix-savvy engineers.<br>
+	<a href="http://whqlx111/engr/procedures/HPCQ%20CAE%20batch%20job%20submission%20manual%20page%20(15).docx"> Link to man page for hpcq</a><br>
+<tr>
+	
+<tr>
+<td>
+<b>
+findpid.sh<br>
+<td>
+	<pre>
+# -------------------------------------------------------------------- #
+# Script to identify and kill the processes associated with an LSF     #
+#        JobID.                                                        #
+# -------------------------------------------------------------------- #
+<br>
+    Script to get the correct process id (PID) for a given Abaqus 'standard', 'pre',
+    or 'explicit' job and kill the process.<br>
+    This was developed in 2016 when we were running multiple ABAQUS jobs on some hosts,<br>
+    whqlx35 (up to 4x16 core jobs), whqlx21,32,33 (2x16 core jobs. <br>
+    We no longer do that.	
+	</pre>
+
+	<a href="http://whqlx111/engr/procedures/HPC%20-%20findpid.sh%20Manual%20Page.docx"> Link to man page for findpid.sh</a><br>
+</table>
+<br>
+<p>
+<table border=1 style="width:65%">
+  <tr>
+    <th align="left" valign="top" width="20%">Grafana Scripts:
+    <th align="left">Purpose and description
+  <tr > 
+<p>
+
+
+
+<tr>
+<td>
+<b>dfstat|collect_caehome_stats.sh<br>
+</td>
+<td>
+	Runs as ut user on CAE file servers <br>
+	<br> Collects CAEHOME usage and loads data to GRAFANA database on aamlxgmd002<br>
+	Runs on LSF cluster file servers, WHQ (whqlx40/whqcax), PBO (punlx07), EHQ (fralx07)<br>
+	<p>
+	This records disk usage information for caehomes and archives<br>
+    and pipes it to the Grafana server. S.McKenna. 04/30/2019. ugly, but it works...<br>
+<br> Crontab entry on CAE fileservers <br>
+*/10 * *  *  *  /home/ut/scripts/dfstat.sh | /home/ut/scripts/collect_caehome_stats.sh > /dev/null<br>
+
+	<br>
+<tr>
+	
+<tr>
+<td>
+<b>
+GRAFANA scripts<br>
+<td>
+	<br> Collects CAE satistics and loads data to GRAFANA database on aamlxgmd002<br>
+<pre>
+# -------------------------------------------------------------------- #
+#    Runs as ut user on CAE head nodes and compute nodes               #
+# -------------------------------------------------------------------- #
+<br>
+# -------------------------------------------------------------------- #
+# collect host utilization from LSF lsload (lsfdb) and ABAQUS token    #
+# usage (head nodes only)                                              #
+# -------------------------------------------------------------------- #
+#
+*/5 * * * * /home/ut/scripts/collect_lsf_stats.sh > /dev/null
+#
+# -------------------------------------------------------------------- #
+# collect ADAMS flex token usage. (runs on WHQ head node only)         #
+# -------------------------------------------------------------------- #
+#
+*/5 * * * * /home/ut/scripts/collect_ADAMS_stats.sh > /dev/null
+#
+# -------------------------------------------------------------------- #
+# collect bjobs data (lsfjobs)
+# usage (head nodes only)                                              #
+# -------------------------------------------------------------------- #
+#
+*/5 * * * * /home/ut/scripts/collect_lsf_bjobs.sh > /dev/null
+# -------------------------------------------------------------------- #
+# collect LSF twin_oct (16+24 core ABAQUS compute nodes) utlization
+# S.McKenna 03/06/2020
+# usage (head nodes only)                                              #
+# -------------------------------------------------------------------- #
+#
+*/5 * * * * /home/ut/scripts/collect_lsf_summary_stats.sh > /dev/null
+#
+# -------------------------------------------------------------------- #
+# collect SAR cpu, memory and swap usage (unixcapdb)                   #
+# (all compute nodes)
+# -------------------------------------------------------------------- #
+#
+*/5 * * * * /home/ut/scripts/collect_os_unixcapdb.sh > /dev/null
+#
+# -------------------------------------------------------------------- #
+# Cleanup temp files created by data collection scripts
+# usage (All compute nodes?)                                              #
+# -------------------------------------------------------------------- #
+# Cleanup GRAFANA temporary log files
+0 0 * * * find /var/tmp -maxdepth 1 -type f -user ut -name "[0-9]*.log" -mtime +7 -exec rm {} \;
+# There are more... to cleanup tmp, auto/tmp etc.
+#
+
+	
+	</pre>
+<tr>
+<td>
+<b>bacfg<br>
+</td>
+<td>
+	LSF cluster backup. <br><br>
+	Runs on aamcfgp001 and collects LSF configuration files from the LSF cluster head nodes, WHQ (whqlsf), PBO (punlsf), EHQ (fralsf)<br>
+	
+<pre>
+	
+#aamlxcfgp001 mckenns /cfgs/lsfadmin/bin $ cat bacfg #!/bin/sh # # This script backs up LSF configuration files.
+#
+# Revision history:
+# 2019-10-21 Written by Wayne Brehob (although he doesn't remember doing it) 
+# 2020-03-26 Wayne changed name of 'tar' file to include where it came from 
+# 
+# This script currently does very little error checking, but if run in cron, 
+#  errors will go to the job owner, and that E-mail is forwarded to the UNIX 
+#  team, so we should be able to catch whatever goes wrong.
+#
+# 2020/03/26. Stewart McKenna. After cursory testing!  I added whqlsf and fralsf 
+# to the backups 
+#
+
+bd=/cfgs/lsfadmin/backups
+
+#
+# Use 'punlsf' hostname so we always get the current head node # see above, now backing up 3 LSF clusters, whqlsf, punlsf, and fralsf.
+#
+for host in punlsf whqlsf fralsf; do
+  bf=$host.conf.`date +%Y-%m-%d`.tar.gz
+  [ -f $bd/$bf ] && bf=$host.conf.`date +%Y-%m-%d_%H-%M`.tar.gz
+  if ssh -n $host "cd /usr/shared/lsf; tar -czBf - conf" > $bd/$bf; then
+    find $bd -type f -mtime +14 -exec rm {} \;
+  fi
+done
+</pre>
+<tr>
+	
+
+<!--
+	<a href="http://whqlx111/engr/procedures/HPC%20-%20findpid.sh%20Manual%20Page.docx"> Link to man page for findpid.sh</a><br>
+-->
+</table>
+<br>
+<p>
+<font size=-1>This page was last updated 2020-08-26 by Stewart McKenna</font>
+</body>
+</html>

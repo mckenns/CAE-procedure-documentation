@@ -1,0 +1,909 @@
+<html><head><title>
+New Linux system at AAM
+</title></head><body>
+
+<!-- Wayne Brehob wrote this page, and continues to be its primary maintainer.
+  Here are some notes about the composition of this page:
+  * This has become quite a monster over time.  I can't bring myself to move
+    each little 10-line procedure into its own file, so it will stay large,
+    but some larger procedures are on separage pages (and linked here).
+  * Newer procedures are mostly done in HTML with <tt> for commands, but
+    there are still quite a few in <pre> blocks, because that's so easy,
+    and really doesn't end up looking that bad.  Feel free to use either,
+    as long as you check the rendering (how it looks in a browser).
+ -->
+
+<b>Steps to configure a Linux box to be managed by AAM UNIX group</b>
+<p>
+This page provides a step-by-step guide to preparing a Linux system to run
+on the AAM network.  Most of the procedures are listed right on this page,
+and you simply need to click on the procedure description, and the detailed
+steps will appear.  Some of the procedures are detailed on a separate page,
+in which case a link to that page is included.  You should follow that link,
+run the procedure on that page, then come back to this page.
+<p>
+<b>If you are doing a service pack upgrade on a system that has already been
+configured with these steps, do not use this guide.</b>  Some parts of it
+may be necessary, depending on the update, but only a few.<br>
+Here are specific steps for a <a href=sles12.3.5-update.html><b>
+SLES 12.3 to 12.5 update</b></a>
+
+<p>
+Most of the steps include the commands to run (as root)
+to make the configuration change.  The commands are listed
+<tt>in this font</tt>, and need to be run in a bourne-compatiable shell
+('bash', 'ksh', or 'sh') for proper syntax.
+<hr>
+<ol>
+  <li>For a physical system, rack the server, connect it to the network
+   (including Management/iLO/DRAC), and power.  Configure the management device
+    and mirror the root drives, using procedures for
+   <a href=../vendor/hp/new1.html>HP</a> or
+   <a href=../vendor/dell/new1.html>Dell</a> systems.
+   <br>For a VMware guest, create the system in VMware, including
+   <a href=https://docs.google.com/spreadsheets/d/1ELSmRaIUr275uHZ_OQ903DH8n9tNQRi2ZfuRZM6mqcA/edit?usp=sharing>just enough space for the root drive</a>,
+   and boot it (storage for other filesystems can be added later).
+   <br>For an OVM guest, you can follow the steps in
+    <a href=Building-an-OVM-guest.docx>this document</a> to built from a
+    template.
+
+  <li>Build the operating system with
+   <a href=https://docs.google.com/spreadsheets/d/1ELSmRaIUr275uHZ_OQ903DH8n9tNQRi2ZfuRZM6mqcA/edit?usp=sharing>agreed-upon filesystem sizes</a>,
+   using the procedure for
+    <details><summary>Oracle Linux</summary>
+    <ul>
+      <li>Connect an Oracle Linux DVD [image] to the system and boot from it.
+      <li>Choose "start with a default partition set, but <b>customize</b> it.
+      <li>Rename the "root" volume group to 'vg00'.
+      <li>Adjust partition sizes as desired, then accept the partition layout.
+      <li>Select appropriate packages, or choose "Customize Later" and install
+          the OS.
+      <li>The system will reboot at the end of the installation.
+          After that reboot, continue...
+    </ul>
+    </details>
+    <details><summary>SLES</summary>
+      <ul><li>For a SLES system, follow <a href=build-sles.html>these steps</a>
+      </ul>
+    </details>
+  <li>
+    <details><summary>Turn off graphical login on the system console
+      </summary>
+<pre>  if [ -x /usr/bin/systemctl ]; then
+    if [ `systemctl get-default` = graphical.target ]; then
+      systemctl set-default multi-user.target
+    fi
+  else
+    base=/etc/inittab; idef=`awk -F: '$3 == "initdefault" { print $2 }' $base`
+    if [ "$idef" = 5 ]; then
+      orig=$base.orig; test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+      cp -ip $base $orig; awk 'BEGIN { FS = ":"; OFS = ":" }
+        $3 == "initdefault" { $2 = 3; print; next }; { print }' $orig > $base
+    fi
+  fi</pre>
+    </details>
+  <li>
+    <details><summary>Make sure a group exists with ID '911' so /auto/dist
+     files will have known owners:</summary>
+<pre>  : For Red Hat there is already a 'wheel' group, so create 'admin' at 911.
+  : For Ubuntu, make 911 the 'wheel' group since it does not exist by default.
+  if grep "^wheel:" /etc/group > /dev/null; then
+    /usr/sbin/groupadd -g 911 admin
+  else
+    /usr/sbin/groupadd -g 911 wheel
+  fi</pre>
+    </details>
+
+  <li>
+    <details><summary>Configure DNS and point to the AD servers:</summary>
+      These steps create /etc/resolv.conf with appropriate servers for
+       servers at WHQ and RHTC, then put you in an editor to modify 
+       the file by hand.
+      <br>For other locations, please add an additional server line with the
+       IP address of a DNS server on the network local to that system
+       (is at that site).  This local system should be the first server listed.
+      <br><tt>
+      <br>if [ -f /etc/redhat-release ]; then
+      <br>&nbsp; # Disable NetworkManager if it is installed.
+      <br>&nbsp; systemctl list-unit-files | grep NetworkManager
+      <br>&nbsp; systemctl stop NetworkManager
+      <br>&nbsp; systemctl disable NetworkManager
+      <br>&nbsp; # Disable NetworkManager on default network interface.
+      <br>&nbsp; # This is somewhat redundant with the above, but do it anyway.
+      <br>&nbsp; ifname=`ip address | awk '/^2:/ { i = $2; sub(":", "", i);
+       print i; exit }'`
+      <br>&nbsp; iffile=/etc/sysconfig/network-scripts/ifcfg-$ifname
+      <br>&nbsp; cp $iffile /tmp/ifcfg-$ifname
+      <br>&nbsp; cat /tmp/ifcfg-$ifname | awk '/^DOMAIN/ { next }; { print };
+       END { print "NM_CONTROLLED=no" }' > $iffile
+      <br>else
+      <br>&nbsp; base=/etc/sysconfig/network/config; orig=$base.orig
+      <br>&nbsp; test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+      <br>&nbsp; /bin/cp -p $base $orig
+      <br>&nbsp; cat $orig | awk '
+      <br>&nbsp; &nbsp; /^NETCONFIG_DNS_POLICY=/ { print "NETCONFIG_DNS_POLICY=\042\042"; next }
+      <br>&nbsp; &nbsp; { print; next }' $orig > $base
+      <br>fi
+      <br>hn=`hostname | tr A-Z a-z`; site=${hn:0:3}; tag=${hn:3:2}
+      <br>if [ $tag = lx ]; then
+      <br>&nbsp; base=/etc/resolv.conf; orig=$base.orig
+      <br>&nbsp; test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+      <br>&nbsp; /bin/cp -p $base $orig
+      <br>&nbsp; case $site in
+      <br>&nbsp; aam) ns="172.28.64.48 172.28.64.50 172.28.64.47" ;;
+      <br>&nbsp; whq) ns="10.0.128.33  172.28.64.50 172.28.64.48" ;;
+      <br>&nbsp; roc) ns="10.0.129.33  172.28.64.50 172.28.64.48" ;;
+      <br>&nbsp; *) ns=`netstat -rn | awk '$1 == "0.0.0.0" { split($2, a, "[.]");
+      <br>&nbsp; &nbsp;&nbsp;
+       printf("%s.%s.127.33 172.28.64.47 172.28.64.50\n", a[1], a[2]) }'` ;;
+      <br>&nbsp; esac
+      <br>&nbsp; ( echo domain aam.net; for n in $ns; do echo "nameserver $n";
+       done) > /etc/resolv.conf
+      <br>&nbsp; vi /etc/resolv.conf
+      <br>else
+      <br>&nbsp; 1>&2 echo "\nHostname does not appear to be set correctly."
+      <br>&nbsp; 1>&2 echo "Please set the system hostname and re-run this.\n"
+      <br>fi
+      </tt><p>
+    </details>
+
+  <li>
+    <details><summary>Make sure /etc/hosts contains the system FQDN:</summary>
+    <tt>
+    <br>if [ -x /usr/sbin/ip ]; then
+    <br>&nbsp; ip=`ip address | awk '/inet 127/ { next };
+        /inet / { sub("/.*$", "", $2); print $2; exit }'`
+    <br>else
+    <br>&nbsp; ip=`ifconfig | awk '/inet/ {
+      sub("addr:", "", $2); print $2; exit }'`
+    <br>fi
+    <br>hn=`hostname`
+    <br>dn=`awk '/^search/||/^domain/ { d = $2 }; END { print d }'
+     /etc/resolv.conf`
+    <br>base=/etc/hosts; orig=$base.orig
+    <br>test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+    <br>cp -p $base $orig
+    <br>echo "$ip $hn" >> $base
+    <br>awk -v ip=$ip -v hn=$hn -v dn=$dn '
+    <br> &nbsp; $1 == ip { next }
+    <br> &nbsp; { print }
+    <br> &nbsp; END { printf("%s\t%s.%s\t\t%s\n", ip, hn, dn, hn) }
+    <br>' $orig | unexpand -a > $base
+    <br>vi $base
+    </tt><p></details>
+
+  <li>Make /auto/dist and /auto/iso available
+    <details><summary>If NFS to whqlx111 is available, configure automount
+     to find it</summary>
+  <pre>
+  rpm -q autofs || 1>&2 echo "Please install autofs before continuing."
+  #
+  if [ -f /etc/redhat-release ]; then
+    if [ -f /etc/oracle-release ]; then t=o; else t=r; fi
+    rel=$t`cat /etc/redhat-release | tr -dc '0-9' | cut -c 1`
+    chkconfig="chkconfig"
+  elif [ -f /etc/SUSE-brand ]; then
+    rel=s`awk '/^VER/ { print $NF }' /etc/SUSE-brand`
+    chkconfig="chkconfig --check"
+  elif [ -f /etc/lsb-release ]; then
+    rel=d`awk '/DISTRIB_RELEASE/ { print $NF }' /etc/lsb-release`
+  else
+    1>&2 "This Linux release is not recognized.  Please fix."
+  fi
+
+  base=/etc/sysconfig/autofs; orig=$base.orig
+  test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+  mv $base $orig
+  awk 'BEGIN { fixed = 0 }
+    /^(DEFAULT_)?TIMEOUT/ { print "#" $0; sub("=.*$", "=48"); fixed = 1;
+      print "# This is a very short timeout, but higher never triggers." }
+    { print }; END { if (fixed == 0) { print "TIMEOUT=48" } }' $orig > $base
+ 
+  base=/etc/auto.master; orig=$base.orig
+  test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+  mv $base $orig
+  echo "/auto   /etc/auto.auto" | unexpand -a > $base
+
+  ( printf "#\n# All Linux/UNIX systems have access to 'dist' and 'iso'.\n#\n"
+    echo "dist    -fstype=nfs,vers=3,ro   whqlx111:/var/repo1/dist"
+    echo "iso     -fstype=nfs,vers=3,ro   aamnas01:/ifs/dc3isilon/Corporate/IT/dist"
+  ) | unexpand -a >> /etc/auto.auto
+  case "$rel" in
+  [or]4|[or]5)	echo "Doing RedHat 5 section"
+    if chkconfig portmap; then chkconfig portmap on; service portmap start; fi
+    if chkconfig nfslock; then chkconfig nfslock on; service nfslock start; fi
+    if chkconfig autofs; then service autofs restart
+    else chkconfig autofs on; service autofs start
+    fi ;;
+  [or]6|s11*)	echo "Doing RedHat 6 / SLES 11 section"
+    if $chkconfig autofs; then service autofs restart
+    else chkconfig autofs on; service autofs start
+    fi ;;
+  [or]7|s12*|s15*)	echo "Doing RedHat 7 / SuSE 12/15 section"
+    rpm -q net-tools || printf "\nInstall net-tools before using autofs.\n\n"
+    systemctl enable autofs; systemctl start autofs
+    ;;
+  *) 1>&2 echo "This Linux release is not recognized.  Please fix." ;;
+  esac
+  # Check that this is working before the next sections:
+  if [ ! -d /auto/dist/linux ]; then echo; echo "STOP and fix automount."; fi
+  </pre>
+  </details>
+  <details>
+    <summary>If NFS is not available, populate /home/dist and copy files there
+    </summary><pre>
+  mkdir -p /home/dist/linux /auto
+  ln -s /home/dist /auto/dist
+  # On whqlx111 or site equivalent, copy required files
+  cd /auto/dist/linux; list=`echo etc/{bashrc,sudoers,sudoers.d/*}`
+  list="$list `echo rhel-*-misc`"
+  tar -cBf - $list | ssh new-box "cd /home/dist/linux; tar -xvBf -"
+  # Remember to run these commands on the new system when done installing:
+  # rm -r /home/dist; rm /auto/dist; rmdir /auto</pre></details>
+
+  <li>
+    <details>
+    <summary>Create a 'sudoers' file that lets members of 'wheel' group use
+     'sudo'</summary>
+ <pre>  # Check to see if sudoers has been customized already with this command:
+  awk 'NF == 0 { next }; /^#/ { next }; { print }' /etc/sudoers
+  #
+  base=/etc/sudoers; orig=$base.orig
+  test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+  /bin/cp -fp $base $orig
+  ver=`sudo -V | awk 'NR == 1 { gsub("[.]", ""); print substr($NF, 1, 3) }'`;
+  if [ $ver -gt 172 ]; then
+    cat /auto/dist/linux/etc/sudoers | awk '
+      /Defaults.*env_keep/ {
+        com="# sudo versions greater than 1.7.2 do not keep HOME.  Fix this."
+        print com; sub("XAUTH", "XAUTH HOME"); print; next }
+      { print }
+     ' > $base
+  else
+    /bin/cp -f /auto/dist/linux/etc/sudoers $base
+  fi
+  chown root:root /etc/sudoers; chmod 0440 /etc/sudoers
+  #
+  # For 'sudo' versions new enough to understand #includedir, create it.
+  # #include is in the sudoers file, but ignored for older 'sudo' versions.
+  #
+  if [ $ver -gt 168 ]; then
+    test -d /etc/sudoers.d || mkdir /etc/sudoers.d
+    /bin/cp -f /auto/dist/linux/etc/sudoers.d/* /etc/sudoers.d
+    chown root:root /etc/sudoers.d /etc/sudoers.d/*
+    chmod 750 /etc/sudoers.d; chmod 0440 /etc/sudoers.d/*
+    # Remove most of the sudoers includes; keep only those needed on this system
+    cd /etc/sudoers.d && /bin/rm -i *
+  fi</pre>
+  <b>Check that /etc/sudoers.d has the set of files that are appropriate for
+   this system.  Copy others from /auto/dist/linux/etc/sudoers.d/ if needed.</b>
+   <p></details>
+<li>
+  <details>
+    <summary>Adjust contents of /etc/skel</b> and replace default bashrc
+     to make X11 forwarding work with 'sudo'd shells</summary>
+  <pre>  [ ! -d /etc/skel.old ] && mkdir /etc/skel.old
+  cd /etc/skel; l=".config .emacs .fonts .inputrc .i18n .mozilla .muttrc .vimrc"
+  for file in .bashrc .local .xi* $l public_html .urlview; do
+    [ -e $file ] && mv $file ../skel.old
+  done
+
+  if [ -f /etc/bashrc ]; then
+    base=/etc/bashrc; orig=$base.orig
+    test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+    /bin/mv $base $orig
+    ( echo "# /etc/bashrc"; echo ""
+      echo "# System wide functions and aliases"
+      echo "# Environment stuff goes in /etc/profile"
+      tail -n +4 /auto/dist/linux/etc/bashrc
+    ) > $base
+    [ -f ../skel.old/.bashrc ] && mv ../skel.old/.bashrc .
+  else
+    /bin/cp /auto/dist/linux/etc/bashrc /etc/skel/.bashrc
+  fi
+  [ ! -d .ssh ] && mkdir .ssh
+
+  [ -f /etc/motd ] && mv -n /etc/motd /etc/motd.orig</pre>
+  </details>
+<li>
+  <details>
+    <summary>Create accounts for members of the UNIX team
+    </summary><tt>
+    <br>useradd -u 1709 -g users -G wheel -m -d /home/mckenns mckenns;
+    <br>usermod -c "Stewart McKenna ITC, IT" mckenns;
+    <br>su mckenns -c "echo Stewart.McKenna@aam.com > ~mckenns/.forward";
+    <br>
+    <br>useradd -u 1712 -g users -G wheel -m -d /home/brehobw brehobw;
+    <br>usermod -c "Wayne Brehob, ITC, IT, 313-758-2860" brehobw;
+    <br>su brehobw -c "echo Wayne.Brehob@aam.com > ~brehobw/.forward";
+    <br>
+    <br>useradd -u 1713 -g users -G wheel -m -d /home/topa topa;
+    <br>usermod -c "Alassane Top, ITC, IT, 313-758-2170" topa;
+    <br>su topa -c "echo Alassane.Top@aam.com > ~topa/.forward";
+    <br>
+    <br>useradd -u 1718 -g users -G wheel -m yeolep;
+    <br>usermod -c "Pankaj Yeole, PBO, IT" yeolep;
+    <br>su yeolep -c "echo 'Pankaj.Yeole@aam.com' > ~yeolep/.forward";
+    <br>
+    <br>useradd -u 1719 -g users -G wheel -m phendau;
+    <br>usermod -c "Umesh Phendarkar, PBO, IT" phendau;
+    <br>su phendau -c "echo 'Umesh.Phendarkar@aam.com' > ~phendau/.forward";
+    <br>
+    <br>l="mckenns,brehobw,topa,yeolep,phendau"
+    <br>[ ! -f /etc/SUSE-brand ] && eval chmod u=rwx,g=rx,o=rx /home/{$l};
+    </tt><p>
+    Get passwords for the UNIX team members by running this on whqlx111,
+    copying the output and pasting it into the shell on the system getting
+    newly-installed so it runs as root there<tt>
+    <br>awk -F: 'BEGIN { print "" }
+    <br>&nbsp /^(mckenns|brehobw|topa|yeolep|phendau):/ {
+      printf("usermod -p \047%s\047 %s;\n", $2, $1) }
+    <br>&nbsp END { print "" }' /etc/shadow</tt>
+  </details>
+  <li>
+    <details><summary>Enforce 'wheel' group restriction for 'su root'</summary>
+  <pre>  # Note that this does NOT yet work for SuSE systems.
+  # This section needs to be re-worked.
+  base=/etc/pam.d/su; orig=$base.orig
+  test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+  mv $base $orig
+  awk '/pam_wheel/ { if ($4 == "use_uid") { sub("^#", "") } }; { print }
+   ' $orig > $base</pre>
+    </details>
+
+  <li>At this point, you should <b>login with your own account</b>
+   and <b>sudo -u root -s</b> to get a root shell to finish this procedure.
+
+  <li>
+    <details><summary>Disable SSH login for the root user, and other SSH fixes
+      </summary>
+  <pre>  : Before doing this, make sure you can login as 'root' on the system console.
+  :   If not, modify the '/etc/securetty' file to contain the correct TTY[s].
+  base=/etc/ssh/sshd_config; orig=$base.orig
+  test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+  mv $base $orig
+  awk '
+    /#Protocol /       { print "Protocol 2"; next }
+    /#PermitRootLogin/ { print "PermitRootLogin without-password"; next }
+    /#LogLevel/        { print "LogLevel ERROR"; next }
+    /#UseDNS/          { print "UseDNS yes"; next }
+    { print }' $orig > $base
+  if [ -x /usr/bin/systemctl ]; then
+    /usr/bin/systemctl restart sshd
+  else
+    /etc/init.d/sshd restart
+  fi</pre>
+  </details>
+
+  <li>
+    <details><summary>Create 'ut' and 'snow' users, and set up
+     authorized_keys for them</summary>
+    These steps will make SSH connections to whqlx111 and aamlxsnmidp001
+     to grab SSH keys of service accounts.<br>When it prompts you for a
+     password, use YOUR password -- it is just to pick up the keys.<tt>
+    <br>( useradd -u 911 -g nobody -c "Unix Team" -s /bin/bash -d /home/ut -m ut
+    <br>&nbsp; useradd -u 124 -g users -c "Service Now CMDB data gather" -m snow
+    <br>&nbsp; chmod u=rwx,g=rx,o=rx ~ut ~snow
+    <br>&nbsp; echo Unix_Team@aam.com >>   ~ut/.forward; chown ut:nobody ~ut/.forward
+    <br>&nbsp; echo Unix_Team@aam.com >> ~snow/.forward; chown snow:users ~snow/.forward
+    <br>&nbsp; usd=`echo ~ut/.ssh | sed s+//+/+`; ssd=`echo ~snow/.ssh | sed s+//+/+`
+    <br>&nbsp; [ ! -d $usd ] && sudo -u ut mkdir $usd
+    <br>&nbsp; [ ! -d $ssd ] && sudo -u ut mkdir $ssd
+    <br>&nbsp; box=whqlx111.aam.net; [ -n "$LOGNAME" ] && box=${LOGNAME}@$box
+    <br>&nbsp; ssh $box sudo -u ut cat \~ut/.ssh/id_rsa.pub >> $usd/authorized_keys
+    <br>&nbsp; chown ut:`id -g ut` $usd/authorized_keys
+    <br>&nbsp; box=aamlxsnmidp001.aam.net; [ -n "$LOGNAME" ] && box=${LOGNAME}@$box
+    <br>&nbsp; ssh $box sudo -u snow cat \~snow/.ssh/id_rsa.pub >> $ssd/authorized_keys
+    <br>&nbsp; chown snow:`id -g snow` $ssd/authorized_keys
+    <br>)
+    </tt><p>
+  </details>
+
+  <!--
+  <li>
+    <details><summary>Disable less secure login methods</summary>
+    COMMENT
+  <pre>  case `cat /etc/redhat-release | tr -dc '0-9' | cut -c 1` in
+  4|5|6)
+    for service in `chkconfig --list | egrep 'telnet|rlogin|rsh|ftp' | awk '
+     /on/ { sub(":", "", $1); print $1 }'`; do
+      echo "Turning off '$service'."; chkconfig $service off
+    done ;;
+  7)
+    for service in `cd /etc/systemd/system/multi-user.target.wants
+     2>/dev/null /bin/ls -1 *ftp* *telnet* *rlogin* *rsh*`; do
+      echo "Turning off '$service'."; systemctl disable $service
+    done ;;
+  *) 1>&2 "This Linux release is not recognized.  Please fix." ;;
+  esac</pre>
+  If the vendor requires any of the 'r' connection methods, make sure that they
+   are a bit more secure.  For instance, direct root login can be disallowed by
+   by making sure the PAM "securetty" configuration is enabled:
+   egrep "^auth.*securetty" /etc/pam.d/{remote,rlogin,rsh}
+    </details> -->
+
+  <li>
+    <details><summary>Turn off SElinux (Red Hat) or AppArmor (SuSE)
+      </summary>
+  <pre>  if [ -f /etc/redhat-release ]; then
+    if /usr/sbin/selinuxenabled; then
+      if [ -d /etc/selinux ]; then
+        base=/etc/selinux/config; orig=$base.orig
+        test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+        mv $base $orig; awk '
+          /^SELINUX=/ { print "SELINUX=disabled"; next }
+          { print }' $orig > $base
+      fi
+      # Must reboot for this to fully take effect, but this helps until then:
+      echo 0 > /sys/fs/selinux/enforce
+    fi
+  else
+    rcapparmor stop
+    systemctl disable boot.apparmor
+    yast runlevel delete service=boot.apparmor
+  fi</pre>
+  </details>
+
+  <li>
+    <details><summary>Create and populate /usr/local/SAbin
+      </summary>
+  <pre>  mkdir /usr/local/{SAbin,SAdata}
+  chown ut:admin /usr/local/{SAbin,SAdata}
+  cp /auto/dist/linux/SAbin/any/* /usr/local/SAbin
+  # Also copy /auto/dist/linux/SAbin/&lt;<i>other-dir</i>&gt;/*
+  # As appropriate for or <b>cae</b> or <b>oracle</b> systems</pre>
+  </details>
+
+  <li>If ISO for this Linux release is available, add it...
+    <br><a href=repo-rh.html>as a yum repository for Red Hat / Oracle Linux
+     systems</a>
+    <br><a href=repo-sles.html>as a zypper repository on SLES system</a>.
+
+  <li>
+    <details><summary>If this system is a VMWare guest, or has a hardware
+     RAID controller (nearly all systems), turn off 'smartd'.</summary>
+  <pre>  if [ -x /usr/bin/systemctl ]; then
+    if [ -f /etc/systemd/system/multi-user.target.wants/smartd.service ]; then
+      systemctl disable smartd
+    fi
+  else
+    chkconfig --check smartd && chkconfig smartd off
+  fi</pre>
+    For non-VMware systems, you should implement some sort of alerting
+    when the hardware RAID controller detects a problem with a disk.
+    The controller software may have this function built-in, or you
+    may need to run a cron job that queries the controller, then sends
+    an alert (usually E-mail) when a problem is detected.
+    This is partially covered below in the hardware-specific procedures,
+    but not all cases are covered.
+    <p></details>
+
+  <li>
+    <details><summary>Start 'atd' so 'at' and 'batch' commands work, and
+     move logwatch out of the daily crontab
+    </summary>
+      <br><tt>[ -x /usr/bin/zypper ] && ic=zypper || ic=yum
+      <br>rpm -q at || $ic install at
+      <br>if [ -x /usr/bin/systemctl ]; then
+      <br>&nbsp; systemctl is-enabled atd || systemctl enable atd
+      <br>&nbsp; systemctl start atd
+      <br>else
+      <br>&nbsp; if ! chkconfig -c atd; then chkconfig atd on;
+       service atd start; fi
+      <br>fi
+      <br>[ ! -d /etc/cron.disabled/cron.daily ] &&
+       mkdir -p /etc/cron.disabled/cron.daily
+      <br>[ -e /etc/cron.daily/0logwatch ] &&
+       mv /etc/cron.daily/0logwatch /etc/cron.disabled/cron.daily
+      <p></tt>
+  </details>
+
+  <li>
+    <details><summary>Unless this system is internet-facing,
+     disable the local firewall</summary>
+  <pre>  if [ -f /etc/redhat-release ]; then
+    case `cat /etc/redhat-release | tr -dc '0-9' | cut -c 1` in
+    4|5|6)
+      chkconfig iptables && chkconfig iptables off && service iptables stop ;;
+    7)
+      if [ -f /etc/systemd/system/multi-user.target.wants/firewalld.service ]; then
+        systemctl disable firewalld; systemctl stop firewalld
+      fi ;;
+    esac
+  else
+    ( echo "\nThis is a SLES system -- disable firewall by hand."
+      echo "'systemctl list-unit-files | grep -i fire' should help.\n" )
+  fi</pre>
+  </details>
+
+  <li>
+    <details><summary>Configure NTP to point to the network routers:</summary>
+      <br><tt>#
+      <br># Set $ts to a list of time servers appropriate for this system's
+       location.<br># This assumes proper naming standards for private cloud,
+       WHQ, and RHTC systems.  Correct if necessary.<br>#
+      <br>hn=`hostname | tr A-Z a-z`; site=${hn:0:3}; tag=${hn:3:2}
+      <br>if [ $tag = lx ]; then
+      <br>&nbsp; case $site in
+      <br>&nbsp; aam) ts="172.31.248.1 172.30.248.1" ;;
+      <br>&nbsp; whq) ts="10.2.248.1 172.30.248.1 172.31.248.1" ;;
+      <br>&nbsp; roc) ts="10.2.249.50 172.30.248.1 172.31.248.1" ;;
+      <br>&nbsp; pun) ts="10.196.248.1 10.198.248.1 10.195.248.1" ;;
+      <br>&nbsp; fra) ts="10.128.248.1 10.129.248.1 10.130.248.1" ;;
+      <br>&nbsp; *) ts=`netstat -rn | awk '$1 == "0.0.0.0" { split($2,a,"[.]"); 
+          printf("%s.%s.248.1 172.28.64.47 172.28.64.50\n", a[1], a[2]) }'` ;; 
+      <br>&nbsp; esac
+      <br>else
+      <br>&nbsp; 1>&2 echo "\nHostname does not appear to be set correctly."
+      <br>&nbsp; 1>&2 echo "Please set <b>ts</b> to a list of time servers.\n"
+      <br>fi
+      <br>
+      <br>#
+      <br># If this is a newer os, use 'chronyd'
+       (more information 
+       <a href=https://chrony.tuxfamily.org/comparison.html>
+       here</a> if you are curious), otherwise use 'ntpd'.
+      <br>#
+      <br>if [ -x /usr/sbin/chronyd ]; then
+      <br>&nbsp; base=/etc/chrony.conf; orig=$base.orig 
+      <br>&nbsp; test -f $orig && orig=$base.pre-`date +%Y-%m-%d` 
+      <br>&nbsp; test -f $orig || mv $base $orig 
+
+      <br>&nbsp; ( for t in $ts; do echo "server $t"; done 
+      <br>&nbsp; &nbsp; echo "allow 127.0.0.1"
+      <br>&nbsp; &nbsp; echo "logdir /var/log/chrony"
+      <br>&nbsp; &nbsp; echo "driftfile /var/lib/chrony/drift"
+      <br>&nbsp; ) > $base 
+      <br>&nbsp; systemctl restart chronyd
+      <br>&nbsp; checkcmd="chronyc sources"
+      <br>elif [ -x /usr/sbin/ntpd ]; then
+      <br>&nbsp; base=/etc/ntp.conf; orig=$base.orig
+      <br>&nbsp; test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+      <br>&nbsp; test -f $orig || mv $base $orig
+      <br>&nbsp; ( for t in $ts; do echo "server $t"; done
+      <br>&nbsp; &nbsp; echo "restrict 127.0.0.1" 
+      <br>&nbsp; &nbsp; echo "driftfile /etc/ntp/drift"
+      <br>&nbsp; ) > $base
+      <br>&nbsp; # If this configuration (on RHEL or OL) uses step-tickers,
+       fill it in.
+      <br>&nbsp; # This allows a large time offset to be corrected with a
+       jump at boot.
+      <br>&nbsp; if [ -d /etc/ntp ]; then
+      <br>&nbsp; &nbsp; if [ -f /etc/ntp/step-tickers ]; then
+      <br>&nbsp; &nbsp; &nbsp; ( echo "# List of NTP servers used by ntpdate
+       service."<br>&nbsp; &nbsp; &nbsp; &nbsp; echo $ts | sed 's/ /\n/g' )
+       &gt; /etc/ntp/step-tickers
+      <br>&nbsp; &nbsp; fi
+      <br>&nbsp; else
+      <br>&nbsp; &nbsp; mkdir /etc/ntp
+      <br>&nbsp; fi
+      <br>&nbsp; chown ntp:ntp /etc/ntp
+      <br>&nbsp; if [ -x /usr/bin/systemctl ]; then
+      <br>&nbsp; &nbsp; if systemctl -q check ntpd.service; then
+      <br>&nbsp; &nbsp; &nbsp; systemctl restart ntpd.service
+      <br>&nbsp; &nbsp; else
+      <br>&nbsp; &nbsp; &nbsp; systemctl enable  ntpd.service
+      <br>&nbsp; &nbsp; &nbsp; systemctl start   ntpd.service
+      <br>&nbsp; &nbsp; fi
+      <br>&nbsp; else
+      <br>&nbsp; &nbsp; chkconfig ntp  on && service ntp  restart
+      <br>&nbsp; &nbsp; [ -f /etc/init.d/ntpdate ] && chkconfig ntpdate on
+      <br>&nbsp; fi
+      <br>&nbsp; checkcmd="ntpq -p"
+      <br>else
+      <br>&nbsp; echo "\nDid not find 'chronyd' or 'ntpd'.  Please install one
+       or the other and run this again."
+      <br>fi</tt>
+      <p>After a minute or two, confirm that 'chronyd' or 'ntpd' is
+       running and has reached a server
+      <br><tt>&nbsp; $checkcmd</tt>
+      <p>
+  If this is a VMware guest, check this <a href=http://kb.vmware.com/selfservice/microsites/search.do?language=en_US&cmd=displayKC&externalId=1006427>timekeeping article</a> for additional caveats.<p>
+    </details>
+
+<!-- These things don't seem to ever be necessary anymore
+  <li>
+    <details><summary>Make sure the system hardware clock is in UTC</summary>
+  <pre>  rel=`cat /etc/redhat-release | tr -dc '0-9' | cut -c 1`
+  if [ $rel -le 5 ]; then
+    file=/etc/sysconfig/clock;	s="UTC=true"
+  else
+    file=/etc/adjtime;		s="UTC"
+  fi
+  utc=`awk -v s=$s 'BEGIN { u=0 }; $1 == s { u=1 }; END { print u }' $file`
+  if [ "$utc" != 1 ]; then
+    hwclock -u -w
+    echo "Please configure to read hardware clock as UTC."; sleep 3; vi $file
+  fi
+
+  <li>
+    <details><summary>Set timezone and check Daylight Saving Time table
+     </summary>
+  <pre>  TZ=America/New_York		<b># Set for to system location</b>
+  base=/etc/sysconfig/clock; orig=$base.tmp
+  eval `awk '/^ZONE=/ { print }' $base` 
+  if [ "$ZONE" != "$TZ" ]; then
+    awk -v tz="$TZ" '/^ZONE=/ { printf("ZONE=\042%s\042\n", tz); next }
+       { print }' $base > $orig
+    /bin/mv $orig $base
+    /bin/cp /usr/share/zoneinfo/$TZ /etc/localtime
+  fi
+  : Check that the DST time changes are on the right days
+  zdump -v /usr/share/zoneinfo/$ZONE | grep 2007
+  : Should see "Sun Mar 11" and "Sun Nov  4"</pre>
+    </details>
+-->
+
+  <li>
+    <details><summary>Fix SMTP/mail configuration and test that mail
+     is forwarded appropriately</summary>
+  <pre>  # Some sites may use different relay, but this works for 99% of them:
+  dn=`awk '/^search/||/^domain/ { d = $2 }; END { print d }' /etc/resolv.conf`
+  relay=smtp.aam.net
+  mta=/etc/alternatives/mta-sendmail
+  if [ -x $mta ]; then
+    mta=`/bin/ls -l $mta | sed 's/.*\.//'`
+  else
+    if [ -x /usr/bin/systemctl ]; then
+      if /usr/bin/systemctl --quiet is-enabled postfix; then mta=postfix; fi
+    else
+      mta=`2>/dev/null chkconfig --list | awk '
+        $1 == "postfix"   { if (index($0, "3:on") > 0) { print $1; exit } }
+        $1 == "sendmail"  { if (index($0, "3:on") > 0) { print $1; exit } }'`
+    fi
+  fi
+  case $mta in
+  sendmail)
+    cd /etc; test -f mail/sendmail.cf && cd mail
+    if grep "^DS$relay" sendmail.cf > /dev/null; then :; else
+      base=sendmail.cf; orig=$base.orig
+      test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+      mv $base $orig
+      awk '/^DS/ { print "DS'$relay'"; next } \
+         { print }' $orig > $base
+      service sendmail restart
+    fi ;;
+  postfix)
+    base=/etc/postfix/main.cf; orig=$base.orig
+    if [ -f $orig ]; then
+      mv $base $base.pre-`date +%Y-%m-%d`
+    else
+      mv $base $orig
+    fi
+    awk -v rh=$relay -v dn=$dn '
+      BEGIN { df = 0; rf = 0 }
+      /#mydomain/    {
+        if (df == 0) { print "mydomain = "  dn; df = 1 }; print; next }
+      /#relayhost/   {
+        if (rf == 0) { print "relayhost = " rh; rf = 1 }; print; next }
+      /^mydomain/    { print "#" $0; next }
+      /^relayhost/   { print "#" $0; next }
+      /^myhostname/  { print "#" $0; next }
+      function SetIt(k, v) {
+        if ($NF = v) { print } else { printf("#%s\n%s = %s\n", $0, k, v) }
+      }
+      /^inet_protocols/  { SetIt("inet_protocols",  "ipv4")     ; next }
+      /^inet_interfaces/ { SetIt("inet_interfaces", "localhost"); next }
+      { print }' $orig > $base
+    service postfix restart ;;
+  *)
+    1>&2 echo "MTA is unknown -- please fix and re-run this section." ;;
+  esac
+  str="root: Unix_Team@aam.com"
+  grep "$str" /etc/aliases || ( echo "$str" >> /etc/aliases; newaliases )
+  [ -x /usr/bin/zypper ] && ic=zypper || ic=yum
+  rpm -q mailx || $ic install mailx
+  recip=root; [ -n "$LOGNAME" ] && recip=${LOGNAME}
+  echo "If you get this, relay works" | mail -s message-from-`hostname` $recip</pre>If you do not get the message, open a request to the Windows team to allow
+  this host to send mail through the relay server.
+  <p>
+  </details>
+
+  <li>
+    <details><summary>Install and configure SNMP so the system can be monitored.
+     </summary><tt>
+  &nbsp; loc="WHQ rack-number U-position"</tt> &nbsp; &larr; Change this!<tt>
+  <br>&nbsp; string=aamread
+  <br>&nbsp; [ -x /usr/bin/zypper ] && ic=zypper || ic=yum
+  <br>&nbsp; rpm -q net-snmp || $ic install -y net-snmp
+  <br>&nbsp; base=/etc/snmp/snmpd.conf; orig=$base.orig
+  <br>&nbsp; test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+  <br>&nbsp; cp -p $base $orig
+  <br>&nbsp; ( echo "rocommunity $string"
+  <br>&nbsp; &nbsp; echo "syslocation $loc"
+  <br>&nbsp; &nbsp; echo "syscontact Unix_Team@aam.com"
+  <br>&nbsp; &nbsp; echo '# Avoid annoying "Connection from UDP:"
+   messages in syslog.'
+  <br>&nbsp; &nbsp; echo "dontLogTCPWrappersConnects yes"
+  <br>&nbsp; ) > $base
+  <br>&nbsp; if [ -x /usr/bin/systemctl ]; then
+  <br>&nbsp; &nbsp; systemctl is-enabled snmpd || systemctl enable snmpd;
+   systemctl start snmpd
+  <br>&nbsp; else
+  <br>&nbsp; &nbsp; chkconfig snmpd on && service snmpd start
+  <br>&nbsp; fi
+  <br>&nbsp; # Check that you can query it (modify this command if running
+   remotely):
+  <br>&nbsp; snmpwalk -c $string -v 1 localhost system |
+   egrep -v 'OID|Time|sysORD'</tt><p>
+    </details>
+
+<!--
+  I may need to revive this code, but hopefully not
+
+    eval `awk -F= '/^ID=/ { printf("id=%s;\n",  $2) };
+             /^VERSION_ID=/ { printf("ver=%s;\n", $2) }' /etc/os-release`
+    case "$id" in
+    *suse*|sles) [ `expr $ver \> 11` = 1 ] && new=true || new=false ;;
+    ol|*red*|rhel*) [ `expr $ver \> 6` = 1 ] && new=true || new=false ;;
+    esac
+-->
+  <li>
+    <details><summary>Install 'cfg2html' and schedule pickups</summary><pre>
+    # This is a bit of a hack, but /etc/os-release appeared in the exact
+    #  versions of SUSE-based and Red-Hat-based flavors for this to work.
+    if [ -f /etc/os-release ]; then
+      rpm=cfg2html-6.30-151.1-SLES12.noarch.rpm
+    else
+      rpm=cfg2html-6.27-95.1-SLES11.noarch.rpm
+    fi
+    rpm -hiv /auto/dist/linux/misc-utils/$rpm
+    base=/etc/cfg2html/systeminfo; orig=$base.orig
+    test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+    test -s $base && cp -p $base $orig
+    ( echo "Comments:       &lt;Please edit /etc/cfg2html/systeminfo&gt;"
+      echo "Company:        American Axle & Manufacturing"
+      echo "Location:       $loc" ;# This was set in SNMP section
+      echo "Contact:        AAM UNIX Admins &lt;Unix_Team@aam.net&gt;"
+      echo "Main Server:    Standalone"
+      echo "URL:            http://www.cfg2html.com"
+    ) | unexpand -a > $base
+
+    ( echo "38 2 * * 3 root /usr/sbin/cfg2html -2\%Y\%m\%d > /var/tmp/cfg2html.log 2>&1"
+      echo "42 1 * * 6 root /usr/local/SAbin/keeplast5cfg2html /var/log/cfg2html > /var/tmp/keeplast5.cfg2html.log 2>&1"
+    ) >> /etc/cron.d/cfg2html
+    
+    # Make an initial run of 'cfg2html'
+    /usr/sbin/cfg2html -2\%Y\%m\%d > /var/tmp/cfg2html.log 2>&1 & </pre>
+    </details>
+
+  <li>
+    Configure sysstat (SAR)
+    for <a href=sar-rh.html>Red Hat / Oracle Linux</a>
+    or <a href=sar-sles.html>SLES</a>
+
+  <li>If this is a physical system, install software to communicate with
+    the system hardware using the <A HREF=hp2.html><b>HP</b></a> or
+    <a href=dell2.html><b>Dell</b></a> procedure as appropriate
+
+  <li>If this is a physical system, configure redundant ethernet connections
+    with bonding, for <a href=bonding-rh.html>Red Hat / Oracle Linux</a> or
+    <a href=bonding-sles.html>SLES</a>
+
+  <li>Install additional miscelaneous tools and make release-specific
+   adjustments:
+    <br>On SLES 11 & 12, all the standard tools are already installed.
+    <details><summary>On SUSE (SLES or openSUSE) 15, follow these steps:
+    </summary>
+      <pre>
+      ver=`awk '/^VER/ { ver = $NF }; END { print ver }' /etc/S[uU]SE-brand`
+      dir=/auto/dist/linux/sles/openSUSEextras-$ver
+      rpm -q --quiet telnet || rpm -hiv $dir/telnet-*.rpm
+      rpm -q --quiet finger || rpm -hiv $dir/finger-*.rpm
+      #
+      # New SUSE systems are not configured to create /var/log/messages, and
+      #  messages are not retained across reboots, unless /var/log/journal
+      #  exists #  and /etc/systemd/journald.conf contains "Storage=auto"
+      #  (journald detects the directory and writes logs there).  Do this.
+      #
+      mkdir /var/log/journal; journalctl --flush
+      systemd-tmpfiles --create --prefix /var/log/journal
+      ( echo "\nWhat used to be in here is now available through 'journalctl'\n"
+      ) >> /var/log/messages
+      </pre>
+    </details>
+    <details><summary>On Red Hat or Oracle Linux, follow these steps:</summary>
+    <pre>  # Set installer command appropriate to Linux distribution
+  ic=yum; [ -x /usr/bin/zypper ] && ic=zypper
+  # See if this is a "hardware" system.  If so, install sg_utils.
+  l=$(dmidecode | awk 'BEGIN { l = " sg3_utils" }
+    /^Handle / { p = 0; next }; /System Information/ { p = 1; next }
+    /Manufacturer:/ && p == 1 { if(match($2, "VMware|Xen") > 0) { l = "" } }
+    END { print l }')
+  l="$l bc finger lsof nmap-ncat psmisc screen telnet tigervnc-server wget xauth xterm"
+  eval `rpm -qa | awk -v ic=$ic -v list="$l" '
+    /^bc-[0-9]/              { sub(" bc",              "", list); next }
+    /^finger-[0-9]/          { sub(" finger",          "", list); next }
+    /^lsof-[0-9]/            { sub(" lsof",            "", list); next }
+    /^nmap-ncat--[0-9]/      { sub(" nmap-ncat",       "", list); next }
+    /^psmisc-[0-9]/          { sub(" psmisc",          "", list); next }
+    /^screen-[0-9]/          { sub(" screen",          "", list); next }
+    /^sg3_utils-[0-9]/       { sub(" sg3_utils",       "", list); next }
+    /^telnet-[0-9]/          { sub(" telnet",          "", list); next }
+    /^tigervnc-server-[0-9]/ { sub(" tigervnc-server", "", list); next }
+    /^wget-[0-9]/            { sub(" wget",            "", list); next }
+    /-xauth-[0-9]/           { sub(" xauth",           "", list); next }
+    /^xterm-[0-9]/           { sub(" xterm",           "", list); next }
+    END {
+      if (length(list) > 2) {
+        cmd = sprintf("%s install%s", ic, list)
+        printf("echo Running command: %s;\n%s\n", cmd, cmd)
+      } else { print "echo all items in this section are already installed." }
+    }
+   '`
+  #
+  # In addition, install 'xorg-x11-twm'.  This is no longer available in
+  #  Red Hat or Oracle Linux release 7, but the RPM from release 6 works fine
+  # <!-- on SUSE, TWM is part of xorg-x11  -->
+  rpm  -hiv /auto/dist/linux/rhel-6-misc/xorg-x11-twm-1.0.3-5.1.el6.x86_64.rpm
+  </pre>
+    </details>
+
+  <li>If this system will be a CAE compute node
+   <a href=compute.html>Install CAE software, create CAE users, etc.</a>
+   <br>Alternately, <a href=oracle.html>if it will run an Oracle database,
+   prepare accordingly.</a>
+
+  <li>Install / configure splunk using
+   <a href=splunk.html>these instructions</a>
+
+  <li>Install / configure backups using
+   <a href=backups.html>these instructions</a>
+
+  <li>
+    <details><summary>On RHEL or OL verion 5 or 7 systems, more tweaks</summary>
+      <pre>   case `cat /etc/redhat-release | tr -dc '0-9' | cut -c 1` in
+   5) # Change default RPM query format to include architecture:
+     base=/etc/rpm/macros.local; orig=$base.orig
+     test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+     test -s $base && cp $base $orig
+     echo "%_query_all_fmt %%{name}-%%{version}-%%{release}.%%{arch}" >>$base ;;
+   7) # Install 'bind-utils' to get 'nslookup' 'dig', etc:
+     yum install bind-utils ;;
+   esac</pre>
+     </details>
+
+  <li>
+    <details><summary>If this is a physical system using fibre channel or iSCSI
+     storage, ensure that SCSI & multipathing tools are installed</summary><p>
+    <tt>rpm -qa | egrep 'device-mapper-multi|sysfsutils|libsysfs|lsscsi' | sort</tt>
+    <br># Should see 5 lines.  If not, install any that are missing.<p>
+    </details>
+
+  <li>If this is a VMware guest,
+    <a href=vmware-tools.html>install the VMware tools</a>.  If this is an
+    OVM guest, <a href=ovm-guest.html>install the OVM guest tweaks</a>.
+
+  <li>
+    <details><summary>If this is a VMware or OVM guest that will be
+      running an Oracle product requiring a lot of random numbers, install
+      the <b>rng</b> toolkit for Random Number Generation</summary>
+      <ul>
+        <li>Install the <b>rng</b> tools:  <tt>yum install rng-tools</tt>
+	<li>For Red Hat 6 and below, enable and start 'rngd':<tt>
+	  service rngd start && chkconfig rngd on</tt>
+	<li>For Red Hat 7 and above, modify
+	  /usr/lib/systemd/system/rngd.service and start it:<tt>
+          <br>base=/usr/lib/systemd/system/rngd.service; orig=$base.orig
+          <br>test -f $orig && orig=$base.pre-`date +%Y-%m-%d`
+	  <br>cp -p $base $orig
+	  <br>cat $orig | sed 's+/sbin/rngd -f+/usr/sbin/rngd -f -i -o /dev/random -r /dev/urandom -W 2048+' > $base
+	  <br>systemctl enable rngd.service
+	  <br>systemctl start rngd.service</tt>
+        <li>Test it:  <tt>cat /proc/sys/kernel/random/entropy_avail</tt>
+      </ul>
+    </details>
+
+  <li>
+    <details><summary>Add system to the host DB</summary>
+    <ul>
+      <li>Run this on whqlx111: <tt>/usr/local/SAbin/sysinfo <i>hostname</i></tt>
+      <li>Add the results to file <tt>whqlx111:/var/www/html/boxes/list</tt> file
+      <li>Add lines such as <b>loc</b> (location), <b>console</b>, and
+       <b>app</b> (application) to the entry
+    </details>
+
+</ol>
+<hr>
+<font size=-1>This page was last updated 2019-12-11 by Wayne Brehob</font>
+</body></html>

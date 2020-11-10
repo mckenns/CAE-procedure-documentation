@@ -1,0 +1,140 @@
+<html><head>
+<style>
+table,th,td {
+	border: 1px solid black;
+	border-collapse: collapse;
+	}
+th, td {
+	padding: 5px;
+	}
+th {
+	text-align: left;
+	
+	}
+</style>
+<title>1.	PROCEDURE DESCRIPTION
+</title>
+</head><body>
+<b>Procedure to upgrade the WHQ LSF head node to LSF Spectrum 10.1. </b>
+<p>
+INFRASTRUCTURE PROCEDURE                	NO: INF-12-ULX-1000<br>
+Title: Upgrade WHQ LSF head node to Spectrum 10.1	Page 1 of 1<br>
+Updated: 12/17/2019 1:00 PM						Version:  4.0<br>
+<pre>
+1.	PROCEDURE DESCRIPTION
+Procedure to upgrade the WHQ LSF head node to LSF Spectrum 10.1.
+(Assumption: whqlx30 will be the new head node while whqlx02 is being rebuilt)
+2.	PROCEDURE STEPS
+	1.	Install SLES 12SP3 on the new head node – ( Determine the host to be used as a backup LSF head node - whql30)
+	2.	Add whqlx30 to cluster as an LSF client	  -  done (new host is not in production – so no impact)
+	        copy /etc/auto.auto from whqlx02
+
+		Set LSF_TOP
+		Export LSF_TOP=”/usr/shared/lsf”
+		Execute the command to set the LSF environment
+		.   $LSF_TOP/conf/profile.lsf
+		Run the hostsetup command
+
+		/usr/shared/lsf/9.1/install/hostsetup –-top=”/auto/lsf” –-boot=”y”
+
+		Run systemctl start lsf.service
+
+		Execute lsadmin limstartup
+
+		Execute lsadmin resstartup
+
+		Execute badmin hstartup
+
+	3.	Shutdown LSF on all head and compute nodes ( whqlx02-54,777)
+	4.	Mount the new LSF from whqnas03 and sync the data from whqlx02 to whqnas03
+		whqnas03:/cae/lsf/AAM_WHQ_cluster1   /auto/lsf
+
+		mount whqnas03:/cae/lsf/AAM_WHQ_cluster1 /mnt
+		rsync -avz /usr/shared/lsf/* /mnt
+		umount /mnt
+
+	5.	Change the automount on head and compute nodes to mount /auto/lsf on /usr/shared/lsf
+		(see notes below)
+	
+		Replace NFS export from whqlx02 to compute nodes (/etc/exports) with automount from
+		whqnas03:/cae/lsf/AAM_WHQ_cluster1
+
+		whqlx02
+			remove  /etc/exports
+			...
+			/usr/shared     whqlx*(rw,no_root_squash,sync) 
+			/cae/scratch/home     whqlx*(rw,no_root_squash,sync) 
+			
+		whqlx02 and all head and compute nodes
+
+			New  /etc/auto.auto
+			…
+			# These mounts are specific for a compute server
+			# The 'cae' mount is just to admin. the root of the FS on the unity
+			#
+			cae             -fstype=nfs             whqnas03:/cae
+			lsf             -fstype=nfs             whqnas03:/cae/lsf/AAM_WHQ_cluster2
+			#/cae/AAM_WHQ_cluster2/log/purge
+			log             -fstype=nfs             whqnas03:/cae/AAM_WHQ_cluster2/log
+			#/cae/AAM_WHQ_cluster2/tmp
+			tmp             -fstype=nfs             whqnas03:/cae/AAM_WHQ_cluster2/tmp
+			#
+	
+			Create link to automount of lsf for /usr/shared.lsf
+ 				ls -l /usr/shared/lsf
+				lrwxrwxrwx 1 root root 9 Jun 20 07:56 /usr/shared/lsf -> /auto/lsf
+
+	6.	restart autofs 'systemctl restart autofs'
+	7. 	Start LSF on new head node (whqlx30)
+	8.	Test ( df –h; bhosts)
+	9.	Stop /Start LSF on whqlx02, all other compute nodes.
+	10.	change whqlx30 on cluster to be a failover head node
+		a.	Edit the lsf.cluster.AAM_WHQ_Cluster1 file to add whqlx30 as a client and a head node 
+			Begin   Host
+			HOSTNAME  model    type        server r1m  mem  swp  RESOURCES    #Keywords
+			whqlx02   !   !   1   3.5   ()   ()   (mg)
+			...
+			whqlx30   !   !   1   3.5   ()   ()   (mg)
+			End     Host
+
+		b.	Add whqlx30 to lsb.hosts master_hosts, abaqchk, and nxnast host groups .
+
+		c.	lsadmin ckconfig;lsadmin reconfig
+
+		d.	badmin ckconfig;badmin reconfig;badmin mbdrestart 
+
+	11.	shutdown LSF on whqlx02.
+
+	12.	test that cluster remains up, with whqlx30 as the new head node.
+		lsid
+		lshosts
+		bhosts
+		run test job
+
+	13.	Shutdown LSF on all nodes
+	14.	Install/upgrade LSF 10.1 on whqlx30 (about 30 minutes)
+		(This is actually upgrading the whqnas03 cluster1 lsf filesystem )
+	15.	Restart LSF on other compute nodes
+	16.	more testing
+	17.	Restart LSF on the rest of the compute nodes
+	18.	more testing
+	19.	update DNS entry for whqlsf to whqlx30.
+	20. 	more testing
+
+POST change activities 
+
+1.	Upgrade whqlx02 to SLES12SP3 (this can be done over the course of a few days and is not 
+	dependent on anything else)
+2.	After whqlx02 has been upgraded, add it back into the cluster 
+ 
+</pre>
+</ol>
+
+Notes:
+3.	CHANGE LOG
+Add change log information whenever approved procedure is changed.<br>
+
+INFRASTRUCTURE PROCEDURE	NO: INF-12-ULX-100<br>
+Title: Upgrade WHQ LSF head node to Spectrum 10.1	Page 1 of 1<br>
+Updated: 12/17/2019 1:00 PM						Version:  4.0<br>
+

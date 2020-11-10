@@ -1,0 +1,358 @@
+<html><head>
+<title>CAE accounts</title>
+</head><body>
+<font size=+2>
+<b>How to create accounts for CAE (Computer Aided Engineering) users on
+Linux systems</b></font> (and debug problems with CAE user accounts):<br>
+<!-- <font size=-1>Version number:2017-06-07:nnn</font></body> -->
+<hr>
+<b>For WHQ users</b> (users in WHQ, and users world-wide authorized to use
+ the compute systems in WHQ):
+<ol>
+  <li>Find a non-conflicting UID and all the other information required to
+   fill in this line.<br>You will re-use this exact line on multiple systems
+   so keep it handy to paste into multiple shells:
+    <tt><br>
+    <br>uid=<i>pick_one</i> user=<i>same_as_AD_but_lowercase</i>
+     f=<i>First_Name</i> l=<i>Last_Name</i> s=<i>SITE_ABBR</i>
+     h=<i>/caehomeN</i></tt></li>
+ 
+  <p><li>On <b>whqcax</b> (whqlx40) as 'root', create the user's account, home
+   directory, "dot" files, link their home to /caehome, and set a password:<tt>
+   
+    <p># Paste in the line from step one to set all the variables.
+    <p>if [ -n "$uid" -a -n "$user" -a -n "$f" -a -n "$l" -a -n "$s" -a -n "$h" ]; then
+    <br>&nbsp; useradd -u $uid -g aam -d $h/$user -c "$f $l, $s" -s /bin/bash $user;
+    <br>&nbsp; mkdir $h/$user; chown ${user}:aam $h/$user;
+     chmod u=rwx,g=rx,o=rx /$h/$user;
+    <br>&nbsp; [ $h = /caehome ] || ln -s $h/$user /caehome
+    <br>&nbsp; su $user -c "cp /auto/dist/linux/etc/login  ~$user/.login";
+    <br>&nbsp; su $user -c "cp /auto/dist/linux/etc/bashrc ~$user/.bashrc";
+    <br>&nbsp; su $user -c "echo + $user &gt; ~$user/.rhosts";
+    <br>&nbsp; su $user -c "echo ${f}.${l}@aam.com &gt; ~$user/.forward";
+    <br>&nbsp; rsa=$h/$user/.ssh/id_rsa; pub=$rsa.pub;
+    <br>&nbsp; su $user -c "ssh-keygen -t rsa -N '' -f $rsa";
+    <br>&nbsp; cat $pub | sed s/whqlx40/whqlx20/ &gt $pub.a; mv $pub.a $pub;
+    <br>&nbsp; chown ${user}:aam $pub;
+    <br>else
+    <br>&nbsp; echo "Some variables are missing.  Please fix and re-run this."
+    <br>fi
+    </tt>
+
+    <p>In addition, add the user to the additional groups if they are
+     going to run compute codes other than Abaqus:
+    <table border=0>
+      <tr><td>OptiStruct users:
+          <td><tt>/usr/sbin/usermod -a -G optistruct $user</tt>
+      <tr><td>STARCCM+ users:
+          <td><tt>/usr/sbin/usermod -a -G starccm $user</tt>
+      <tr><td>MAGMA users:
+          <td><tt>/usr/sbin/usermod -a -G magma $user</tt>
+      <tr><td>Virtualization users:
+          <td><tt>/usr/sbin/usermod -a -G virtual $user</tt>
+    </table>
+
+  <li>Most users will <b>not</b> need a Linux password, but CAE users that
+   need to check partial results, etc., may want to get access to a Linux
+   shell with a password.  For those users, follow these steps:
+    <ul>
+      <li>Contact the user and make sure they are available and able to set
+       a password (have PuTTY installed on their Windows system and time
+       login and change their password).
+      <li>Run this command to set a password and force it to be changed
+       as soon as the user logs in:<tt>
+        <br>&nbsp; passwd $user; chage -d 0 $user;</tt>
+        <br>&nbsp; <i> (type in an initial password for the user --
+          you will relay this to the user over the phone or Lync)</i>
+      <li>Ask the user to login to <b>whqcax</b> and explain that they need
+       to type old password (which you just set) twice, and
+       a new password twice.
+      <li>Record the encrypted password string for the creation of other
+       accounts by running this command:<tt>
+        <br>&nbsp; eval $(awk -F: -v u=$user '$1 == u
+         { printf("user=%s pw=\047%s\047\n", u, $2) }' /etc/shadow);
+         echo "user=$user pw='$pw'"</tt></li>
+    </ul><p>
+
+<!-- Soon typical users will no longer need an account on whqlx20 -->
+
+  <li>Most users do not need an account on <b>whqlx20</b>, but for those
+   that do, login there as 'root' to create the user's account:<tt>
+   
+    <br># Paste in the line from step one to set all the variables.
+    <br># Paste in the line from whqcax with encrypted password.
+    <p>if [ -n "$uid" -a -n "$user" -a -n "$f" -a -n "$l" -a -n "$s"
+     -a -n "$h" -a -n "$pw" ]; then
+    <br>&nbsp; useradd -u $uid -g aam -G cae_users -d $h/$user
+     -s /bin/bash -c "$f $l, $s" -p "$pw" $user;
+    <br>else
+    <br>&nbsp; echo "Some variables are missing.  Please fix and re-run this."
+    <br>fi</tt>
+
+  <br><li>On <b>whqlx36</b> as 'root' or 'wwwrun', link 'wwwrun's SSH key file
+   for the user and print the text that will be added to the user's
+   authorized_keys file on whqlx20 (This gives the user access to use the
+   <a href="http://whqlx36/">whqlx36 web interface</a>):<tt>
+    <p># Paste in the line from step one to set all the variables.
+    <p>if [ -n "$user" ]; then
+    <br>&nbsp; cd ~wwwrun/.ssh
+    <br>&nbsp; ln id_rsa $user
+    <br>&nbsp; ln id_rsa.pub $user.pub
+    <br>&nbsp; ip=$(grep $(hostname) /etc/hosts | awk '/^#/ {next};{print $1; exit}')
+    <br>&nbsp; cat $user.pub | awk -v ip="$ip" '{
+    <br>&nbsp; &nbsp; printf("#\n# This key is for web-based job submission\n#\n")
+    <br>&nbsp; &nbsp; printf("from=\042%s\042 %s\n", ip, $0)
+    <br>&nbsp; &nbsp; printf("#\n# This key is for all WHQ CAE compute nodes\n#\n") }'
+    <br>else
+    <br>&nbsp; echo "Please set the user variable and re-run this."
+    <br>fi
+    <br># Copy the text that this prints for the next step.
+     </tt></li>
+
+  <p><li>On <b>whqlx02</b> as 'root' create the user's account with
+   a local home directory, and create the user's authorized_keys file:<tt>
+    <p># Paste in the line from step one to set all the variables.
+    <p>if [ -n "$uid" -a -n "$user" -a -n "$f" -a -n "$l" -a -n "$s" ]; then
+    <br>&nbsp; /usr/sbin/useradd -u $uid -g aam -G cae_users -d /home/$user
+     -m -c "$f $l, $s" -s /bin/bash $user;
+    <br>&nbsp; [ -n "$pw" ] && /usr/sbin/usermod -p "$pw" $user;
+    <br>&nbsp; su $user -c "echo ${f}.${l}@aam.com &gt; /home/$user/.forward";
+    <br>&nbsp; [ ! -d /home/$user/.ssh ] &amp;&amp; su $user -c "mkdir /home/$user/.ssh";
+    <br>&nbsp; mkdir -p /scratch/home/$user; chown ${user}:aam /scratch/home/$user
+    <br>&nbsp; # This opens an editor -- paste in the copied text and write the file.
+    <br>&nbsp; # The key for the WHQ CAE systems will be added later.
+    <br>&nbsp; su $user -c "vi ~$user/.ssh/authorized_keys";
+    <br>else
+    <br>&nbsp; echo "Some variables are missing.  Please fix and re-run this."
+    <br>fi</tt></li>
+
+  <li>On <b>whqlx111</b>, using a user account (not root) with:
+    <ul>
+      <li>password-less SSH access to all compute servers
+      <li>permissions to "sudo -u root" on all the compute servers
+    </ul>
+    Duplicate the user's account from <b>whqlx02</b> to all the other
+     WHQ compute hosts and set up the new user's SSH keys:<tt><br>
+    <p># Paste in the line from step one to set all the variables.
+    <p>c=`hosts -m loc WHQ -m class CAE-compute -n status down -n host whqlx02`
+    <br>if [ -n "$user" -a -n "$c" ]; then
+    <br>&nbsp; /usr/local/SAbin/userdup -u $user -h whqlx02 $c
+    <br>&nbsp; for box in $c; do
+    <br>&nbsp; &nbsp; echo "Creating ${box}:/scratch/home/$user"
+    <br>&nbsp; &nbsp; ssh $box sudo mkdir -p /scratch/home/$user
+    <br>&nbsp; &nbsp; ssh $box sudo chown ${user}:aam /scratch/home/$user
+    <br>&nbsp; done
+    <br>&nbsp; /usr/local/SAbin/cae-ssh-keys -s whq $user
+    <br>fi
+    <p></tt></li>
+
+  <li>If the user needs an account on the Altair cluster (to run OptiStruct or
+   STAR-CCM+) follow the instructions below<br>
+   <br>
+   
+     <a href="http://whqlx111/engr/procedures/Altair-cluster.html"> link to Altair setup instructions</a>
+ <!--  
+    <br>On <b>whqlx111</b>, using a user account (not root) with same
+     requirements as the previous step, run
+    <p><tt>/usr/local/SAbin/new-altair-user -s whq $user</tt>
+-->
+</ol>
+
+<hr>
+
+<b>For PBO or EHQ users</b> (users in PBO, or EHQ, and users in WHQ that
+ might run jobs there):<br>
+
+<ol>
+  The steps below for setting a password can be modified if this user already
+   has an account at another site.<br>
+  <br><li>Find a non-conflicting UID and all the other information required to
+   fill in this line (you will re-use this exact line on multiple systems):<tt><br>
+    <br>uid=<i>pick_one</i> user=<i>same_as_AD_but_lowercase</i>
+     f=<i>First_Name</i> l=<i>Last_Name</i> s=<i>SITE_ABBR</i>
+     h=/caehome</tt></li>
+
+  <br></li><li>On <b>punlx07 (PBO) or fralx07 (EHQ)</b>
+   create the user's account, home, and "dot" files:<tt>
+    <p>if [ -n "$uid" -a -n "$user" -a -n "$f" -a -n "$l" -a -n "$s"
+     -a -n "$h" ]; then
+    <br>&nbsp; /usr/sbin/useradd -u $uid -g aam -G cae_users -d $h/$user
+     -s /bin/bash -c "$f $l, $s" $user;
+    <br>&nbsp; mkdir /caehome/$user; chown ${user}:aam /caehome/$user
+    <br>&nbsp; su $user -c "cp /auto/dist/linux/etc/login  ~$user/.login";
+    <br>&nbsp; su $user -c "cp /auto/dist/linux/etc/bashrc ~$user/.bashrc";
+    <br>&nbsp; su $user -c "echo + $user &gt; ~$user/.rhosts";
+    <br>&nbsp; su $user -c "echo ${f}.${l}@aam.com &gt; ~$user/.forward";
+	<br>&nbsp; rsa=$h/$user/.ssh/id_rsa; pub=$rsa.pub;
+    <br>&nbsp; su $user -c "ssh-keygen -t rsa -N '' -f $rsa";
+    <br>else
+    <br>&nbsp; echo "Some variables are missing.  Please fix and re-run this."
+    <br>fi
+    </tt></li>
+
+  <li>On <b>punlx36 (PBO)</b> or <b>fralx36 (EHQ)</b> become 'root' or
+   'wwwrun' to link 'wwwrun's SSH key file for the user and authorize it
+   on the site 'head node' punlx01 for PBO, or fralx03 for EHQ
+   (without this, the user cannot login to the Web Interface sites
+    <br><b>PBO</b> (<a href="http://punlx36/">punlx36 web interface</a>)
+    <br><b>EHQ</b> (<a href="http://fralx36/">fralx36 web interface</a>)<tt>
+    <br>user=<i>same_as_AD_but_lowercase</i>
+    <br>cd /srv/www/.ssh
+    <br>ln id_rsa $user
+    <br>ln id_rsa.pub $user.pub
+    <br>ip=$(grep $(hostname) /etc/hosts | awk '/^#/ {next};{print $1; exit}')
+    <br># Copy the text that this prints for the next step.
+    <br>cat $user.pub | awk -v ip="$ip" '{
+    <br>&nbsp;  printf("#\n# This key is for web-based job submission\n#\n")
+    <br>&nbsp;  printf("from=\042%s\042 %s\n", ip, $0)
+    <br>&nbsp;  printf("#\n# This key is for all PBO CAE compute nodes\n#\n") }'
+  <!--
+    <br>cat $user.pub | sed 's/^/from="10.196.127.136" /' |
+     ssh ${user}@punlx01 cat \&gt;\&gt; .ssh/authorized_keys -->
+    <br></tt>
+<!-- comment line -->
+  <br><li>Ask the user to set a password on <b>punlx07 (PBO)</b>, or <b>fralx07 (EHQ)</b>
+   then record the encrypted string for the creation of other accounts<br>
+
+    <tt><br>user=<i>same_as_AD_but_lowercase</i>
+    <br>eval $(awk -F: -v u=$user '$1 == u { printf("user=%s pw=\047%s\047\n",
+     u, $2) }' /etc/shadow); echo "user=$user pw='$pw'"<br></tt></li>
+
+    <p><li>On <b>punlx01 (PBO) or fralx03 (EHQ)</b> as 'root'
+     create the user's account with a local home directory, and create the
+     user's <b>authorized_keys file</b>:<tt>
+    <p>uid=<i>pick_one</i> user=<i>same_as_AD_but_lowercase</i>
+    f=<i>First_Name</i> l=<i>Last_Name</i> s=<i>SITE_ABBR</i>
+    pw='<i>encrypted password from punlx07 or fralx07</i>'
+    <p>if [ -n "$uid" -a -n "$user" -a -n "$f" -a -n "$l" -a -n "$s" ]; then
+    <br>&nbsp; useradd -u $uid -g aam -G cae_users -d /scratch/home/$user
+     -m -c "$f $l, $s" -s /bin/bash $user;
+    <br>&nbsp; su $user -c "echo ${f}.${l}@aam.com &gt;
+     /scratch/home/$user/.forward";
+    <br>&nbsp; [ ! -d /scratch/home/$user/.ssh ] &amp;&amp; su $user
+     -c "mkdir /scratch/home/$user/.ssh";
+    <br>&nbsp; mkdir -p /scratch/home/$user;
+     chown ${user}:aam /scratch/home/$user
+    <br>&nbsp; # This opens an editor -- paste in the copied text and write the file.
+    <br>&nbsp; # The key for the WHQ CAE systems will be added later.
+    <br>&nbsp; su $user -c "vi ~$user/.ssh/authorized_keys";
+    <br>else
+    <br>&nbsp; echo "Some variables are missing.  Please fix and re-run this."
+    <br>fi</tt></li>
+
+  <li>On <b>whqlx111</b>, using a user account (not root) with:
+    <ul>
+      <li>password-less SSH access to all compute servers
+      <li>permissions to "sudo -u root" on all the compute servers
+    </ul><br>
+	
+    Duplicate the user's account from <b>punlx01 (PBO) or fralx03 (EHQ)</b> to all the other
+     PBO or EHQ compute hosts, and set up the new user's SSH keys:<tt><br>
+    <br>user=<i>same_as_AD_but_lowercase</i>
+    <p>get a list of PBO or EHQ compute hosts:<tt><br>
+    <br>c=`hosts -m loc PBO -m class CAE-compute -n status down -n host punlx01` for PBO<br></tt>
+	<br>c=`hosts -m loc EHQ -m class CAE-compute -n status down -n host fralx03` for EHQ<br></tt>
+    <br>For <b>PBO</b>
+    <br>if [ -n "$user" -a -n "$c" ]; then
+    <br>&nbsp; /usr/local/SAbin/userdup -u $user -h punlx01 $c  
+    <br>&nbsp; for box in $c; do
+    <br>&nbsp; &nbsp; echo "Creating ${box}:/scratch/home/$user"
+    <br>&nbsp; &nbsp; ssh $box sudo mkdir -p /scratch/home/$user
+    <br>&nbsp; &nbsp; ssh $box sudo chown ${user}:aam /scratch/home/$user
+    <br>&nbsp; done
+    <br>&nbsp; /usr/local/SAbin/cae-ssh-keys -s pbo $user 
+    <br>fi
+    <br>
+    <br>For <b>EHQ</b>
+    <br>if [ -n "$user" -a -n "$c" ]; then
+    <br>&nbsp; /usr/local/SAbin/userdup -u $user -h fralx03 $c   
+    <br>&nbsp; for box in $c; do
+    <br>&nbsp; &nbsp; echo "Creating ${box}:/scratch/home/$user"
+    <br>&nbsp; &nbsp; ssh $box sudo mkdir -p /scratch/home/$user
+    <br>&nbsp; &nbsp; ssh $box sudo chown ${user}:aam /scratch/home/$user
+    <br>&nbsp; done
+    <br>&nbsp; /usr/local/SAbin/cae-ssh-keys -s ehq $user 
+    <br>fi
+
+    <p></tt></li>
+<!--
+  <br><li>On <b>whqlx111</b> get a list of PBO or EHQ compute hosts:<tt><br>
+    <br>c=`hosts -m loc PBO -m class CAE-compute`<br></tt>
+	<br>c=`hosts -m loc EHQ -m class CAE-compute`<br></tt>
+	</li>
+
+  <br><li>On each of the hosts listed, login to the system and create an account
+   for the user:<tt><br>
+    <br>uid=<i>pick_one</i> user=<i>same_as_AD_but_lowercase</i>
+     f=<i>First_Name</i> l=<i>Last_Name</i> s=<i>SITE_ABBR</i>
+     pw='<i>encrypted password string from punlx01</i>' or fralx03
+    <br>/usr/sbin/useradd -u $uid -g aam -G cae_users -d /scratch/home/$user
+     -s /bin/bash -c "$f $l, $s" -p "$pw" $user;
+    <br>mkdir /scratch/home/$user; chown ${user}:aam /scratch/home/$user;
+    <br>su $user -c "cp /auto/dist/linux/etc/login  ~$user/.login";
+    <br>su $user -c "cp /auto/dist/linux/etc/bashrc ~$user/.bashrc";
+    <br>su $user -c "echo + $user &gt; ~$user/.rhosts; mkdir ~$user/.ssh";
+    <br>su $user -c "echo ${f}.${l}@aam.com &gt; ~$user/.forward";<br></tt></li>
+	<pre>
+<!--	c="punlx01 punlx02 punlx03 punlx04"
+echo $c
+uid=4999
+user=globtest
+f="Global "
+l="Test Account"
+s=PBO
+user=globtest pw='$6$w4Nl//WA$jtq4yzOjeYm.lxr7zxUtI1pNTbHPV7O1nFTKhHfFpimh4kdG7/lvqOyjXGM73MxvJk8hmq0dxLzhWcG7KP1rj0'
+#---
+/usr/sbin/useradd -u $uid -g aam -G cae_users -m -d /home/$user -s /bin/bash -c "$f $l, $s" -p "$pw" $user;
+mkdir /scratch/home/$user; chown ${user}:aam /scratch/home/$user;
+su $user -c "cp /auto/dist/linux/etc/login ~$user/.login";
+su $user -c "cp /auto/dist/linux/etc/bashrc ~$user/.bashrc";
+su $user -c "echo + $user > ~$user/.rhosts; mkdir ~$user/.ssh";
+su $user -c "echo ${f}.${l}@aam.com > ~$user/.forward";
+su $user -c "vi ~$user/.ssh/authorized_keys";
+-->
+</pre>
+  <br><li>For PBO->WHQ or EHQ-WHQ users
+      <p>In addition, add the user to the additional groups if they are<br>
+     going to run Abaqus compute jobs on the WHQ compute cluster:<br>
+<!--    <table border=0>
+-->
+	<ul>
+	<li>for PBO-WHQ users on the PBO fileserver, punlx07<br>
+	  <td><tt>/usr/sbin/usermod -a -G pbo2whq $user</tt>
+	  <td><br>
+	  to copy user's ssh public keys and update their known hosts on all WHQ compute nodes<br>
+      ***--- CURRENTLY still in my local bin folder. Not sure what happened. ---***
+	  <tt><br>cae-ssh-keys -s pbo2whq $user  
+       </tt>
+	</li>
+	<p>
+	<li>for EHQ to WHQ users on the EHQ fileserver, fralx07<br>
+	  <td><tt>/usr/sbin/usermod -a -G ehq2whq $user</tt>
+	  <td><br>
+	  to copy user's ssh public keys and update their known hosts on all WHQ compute nodes<br>
+	  <tt><br>cae-ssh-keys -s ehq2whq $user  
+       </tt>
+    </li>
+	<p>
+	Make sure the user's public keys from the file servers (Punlx07/fralx07) are <b> appended </b>to the authorized_keys on the compute nodes
+	at WHQ.<br>
+	<p>
+	<!--There will be a special version of the cae-ssh-keys script to do this and to update the known hosts files on each compute node so that<br>
+	
+	the user's jobs can copy the input and results files from and to the PBO/EHQ file server and the WHQ compute nodes.<br>
+	<p> something like cae-ssh-keys -s pbo2whq -c "whqlx03,whqlx04,...whqlx54" $user might work for now.
+	<br> Work in Progress <br>
+	New script cae_test.sh with '-s pbo2whq' will generate the correct lists. needs to be tested <br> 
+	for PBO->WHQ users run cae-ssh-keys -s pbo2whq $user  to copy user's ssh public keys and update their known hosts on all WHQ compute nodes
+	<br>
+	for EHQ->WHQ users run cae-ssh-keys -s pbo2whq $user  to copy user's ssh public keys and update their known hosts on all WHQ compute nodes
+	<br>
+	-->
+</li>
+</ul)
+</ol>
+<hr>
+<font size=-1>This page was last updated 2019-12-09 by Stewart McKenna</font>
+
+</body></html>
